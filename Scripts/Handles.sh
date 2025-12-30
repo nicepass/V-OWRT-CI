@@ -101,69 +101,55 @@ fi
 #修复ca
 set -e
 
-# 路径识别（覆盖多种构建入口）
-ROOT="$(pwd)"
-if [ -d "$ROOT/package" ] && [ -d "$ROOT/scripts" ]; then
-    WRTPATH="$ROOT"
-elif [ -d "$ROOT/feeds" ]; then
-    WRTPATH="$(dirname "$ROOT")"
-else
-    echo "[ERROR] 未识别当前路径，请在 OpenWrt/ImmortalWRT 根目录执行此脚本"
-    exit 1
-fi
+WRTPATH="$(pwd)"
+echo "[INFO] WRT_PATH=$WRTPATH"
 
-echo "[INFO] OpenWrt path = $WRTPATH"
+##############################################################################
+# 1) 删除源码包中的 ca-certificates
+##############################################################################
+echo "[STEP1] 删除 package/system/ca-certificates ..."
+rm -rf $WRTPATH/package/system/ca-certificates 2>/dev/null || true
+rm -rf $WRTPATH/feeds/*/ca-certificates 2>/dev/null || true
 
-################################################################################
-# 1) 全局删除 ca-certificates 包
-################################################################################
-echo "[STEP1] 删除 package 中的 ca-certificates ..."
-find "$WRTPATH/feeds" "$WRTPATH/package" -maxdepth 4 -type d -name "ca-certificates" -print -exec rm -rf {} +
-
-################################################################################
-# 2) patch: 将所有依赖改为 ca-bundle
-################################################################################
-echo "[STEP2] 统一依赖为 ca-bundle（替换 ca-certificates）..."
-grep -rl "ca-certificates" "$WRTPATH" | while read F; do
+##############################################################################
+# 2) 将依赖全部替换为 ca-bundle
+##############################################################################
+echo "[STEP2] 统一依赖为 ca-bundle ..."
+grep -rl "ca-certificates" "$WRTPATH/package" "$WRTPATH/feeds" 2>/dev/null | while read F; do
     sed -i 's/ca-certificates/ca-bundle/g' "$F"
 done
 
-################################################################################
-# 3) 确保 ca-bundle 自动安装
-################################################################################
-echo "[STEP3] 强制启用 CONFIG_PACKAGE_ca-bundle..."
-sed -i \
-    -e '/CONFIG_PACKAGE_ca-bundle/d' \
-    "$WRTPATH/.config" 2>/dev/null || true
-
+##############################################################################
+# 3) 强制启用 ca-bundle
+##############################################################################
+echo "[STEP3] 启用 ca-bundle ..."
+sed -i '/CONFIG_PACKAGE_ca-bundle/d' "$WRTPATH/.config" 2>/dev/null || true
 echo "CONFIG_PACKAGE_ca-bundle=y" >> "$WRTPATH/.config"
 
-################################################################################
-# 4) TLS & cert 兼容符号链接，确保 curl / sing-box / momo / nikki / tailscale 正常
-################################################################################
-echo "[STEP4] 修正证书路径软链接 ..."
+##############################################################################
+# 4) rootfs 证书路径处理 (target install 阶段执行即可)
+#    目标: 生成镜像时，TLS 统一 → ca-bundle
+##############################################################################
+ROOTFS_TARGET="$WRTPATH/build_dir/target-*/root-*/etc/ssl/certs"
 
-CERTTARGET="/etc/ssl"
-CACERT="$CERTTARGET/certs/ca-certificates.crt"
-CABUNDLE="$CERTTARGET/certs/ca-bundle.crt"
+echo "[STEP4] rootfs TLS 软链修复 (不会触碰宿主系统)"
+mkdir -p $ROOTFS_TARGET
 
-mkdir -p "$(dirname "$CACERT")"
+(
+    cd $ROOTFS_TARGET
+    # 删除固件中的重复证书文件
+    rm -f ca-certificates.crt ca-bundle.crt 2>/dev/null || true
 
-# 删除旧文件
-rm -f "$CACERT" "$CABUNDLE"
+    # 创建统一软链：两者都指向 same source
+    ln -sf /etc/ssl/certs/ca-bundle.crt           ca-certificates.crt
+    ln -sf /etc/ssl/certs/ca-certificates.crt     ca-bundle.crt
+)
 
-# 软链统一来源
-ln -s /etc/ssl/certs/ca-certificates.crt "$CABUNDLE" 2>/dev/null || true
-ln -s /etc/ssl/certs/ca-bundle.crt        "$CACERT"   2>/dev/null || true
-
-################################################################################
-# 5) print summary
-################################################################################
 echo
 echo "==================== 补丁完成 ===================="
-echo "保持了 ca-bundle，移除了 ca-certificates"
-echo "TLS 证书路径统一 -> 解决 libcurl / sing-box / momo / nikki / tailscale 冲突"
+echo "✔ 保留 ca-bundle"
+echo "✘ 删除 ca-certificates"
+echo "✔ TLS 软链在 rootfs 中统一 (不会触碰宿主系统)"
 echo
-echo "你现在可以执行:"
-echo "    make defconfig && make"
+echo "执行构建：make defconfig && make"
 echo "================================================="
