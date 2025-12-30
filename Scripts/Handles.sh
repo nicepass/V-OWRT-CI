@@ -97,3 +97,73 @@ if [ -d *"luci-app-netspeedtest"* ]; then
 
 	cd $PKG_PATH && echo "netspeedtest has been fixed!"
 fi
+
+#修复ca
+set -e
+
+# 路径识别（覆盖多种构建入口）
+ROOT="$(pwd)"
+if [ -d "$ROOT/package" ] && [ -d "$ROOT/scripts" ]; then
+    WRTPATH="$ROOT"
+elif [ -d "$ROOT/feeds" ]; then
+    WRTPATH="$(dirname "$ROOT")"
+else
+    echo "[ERROR] 未识别当前路径，请在 OpenWrt/ImmortalWRT 根目录执行此脚本"
+    exit 1
+fi
+
+echo "[INFO] OpenWrt path = $WRTPATH"
+
+################################################################################
+# 1) 全局删除 ca-certificates 包
+################################################################################
+echo "[STEP1] 删除 package 中的 ca-certificates ..."
+find "$WRTPATH/feeds" "$WRTPATH/package" -maxdepth 4 -type d -name "ca-certificates" -print -exec rm -rf {} +
+
+################################################################################
+# 2) patch: 将所有依赖改为 ca-bundle
+################################################################################
+echo "[STEP2] 统一依赖为 ca-bundle（替换 ca-certificates）..."
+grep -rl "ca-certificates" "$WRTPATH" | while read F; do
+    sed -i 's/ca-certificates/ca-bundle/g' "$F"
+done
+
+################################################################################
+# 3) 确保 ca-bundle 自动安装
+################################################################################
+echo "[STEP3] 强制启用 CONFIG_PACKAGE_ca-bundle..."
+sed -i \
+    -e '/CONFIG_PACKAGE_ca-bundle/d' \
+    "$WRTPATH/.config" 2>/dev/null || true
+
+echo "CONFIG_PACKAGE_ca-bundle=y" >> "$WRTPATH/.config"
+
+################################################################################
+# 4) TLS & cert 兼容符号链接，确保 curl / sing-box / momo / nikki / tailscale 正常
+################################################################################
+echo "[STEP4] 修正证书路径软链接 ..."
+
+CERTTARGET="/etc/ssl"
+CACERT="$CERTTARGET/certs/ca-certificates.crt"
+CABUNDLE="$CERTTARGET/certs/ca-bundle.crt"
+
+mkdir -p "$(dirname "$CACERT")"
+
+# 删除旧文件
+rm -f "$CACERT" "$CABUNDLE"
+
+# 软链统一来源
+ln -s /etc/ssl/certs/ca-certificates.crt "$CABUNDLE" 2>/dev/null || true
+ln -s /etc/ssl/certs/ca-bundle.crt        "$CACERT"   2>/dev/null || true
+
+################################################################################
+# 5) print summary
+################################################################################
+echo
+echo "==================== 补丁完成 ===================="
+echo "保持了 ca-bundle，移除了 ca-certificates"
+echo "TLS 证书路径统一 -> 解决 libcurl / sing-box / momo / nikki / tailscale 冲突"
+echo
+echo "你现在可以执行:"
+echo "    make defconfig && make"
+echo "================================================="
