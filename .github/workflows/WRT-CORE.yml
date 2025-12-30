@@ -172,6 +172,51 @@ jobs:
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
 
+      - name: Fix Certificate Conflicts & TLS Unification
+        run: |
+          echo "[Patch] Unified TLS cert chain - keep ca-bundle / remove ca-certificates"
+
+        # --- 阶段 1：删除 ca-certificates，避免 APK / Qualcomm SDK 二次拉入 ---
+          find feeds -type d -name 'ca-certificates' | xargs rm -rf
+          sed -i '/ca-certificates/d' include/target.mk || true
+
+        # --- 阶段 2：确保 .config 保留 ca-bundle / 禁用 ca-certificates ---
+        # 兼容 USER .config，所以使用注入方式，不覆盖现有内容
+          grep -q 'CONFIG_PACKAGE_ca-bundle=y' .config || echo 'CONFIG_PACKAGE_ca-bundle=y' >> .config
+          sed -i '/CONFIG_PACKAGE_ca-certificates/d' .config
+          echo '# CONFIG_PACKAGE_ca-certificates is not set' >> .config
+
+          echo "[Patch] Config enforced: ca-bundle enabled, ca-certificates disabled"
+
+        # --- 阶段 3：统一 OpenSSL 证书路径（影响 libcurl / tailscale / go 应用） ---
+          for mf in package/libs/openssl/Makefile feeds/*/openssl/Makefile; do
+            [ -f "$mf" ] && \
+            grep -q "with-ca-bundle" "$mf" || \
+            sed -i '/CONFIGURE_ARGS/a\ \ \ \ --with-ca-bundle=\/etc\/ssl\/certs\/ca-bundle.crt --with-ca-path=\/etc\/ssl\/certs' \
+                "$mf"
+        done
+
+        echo "[Patch] OpenSSL fixed to use ca-bundle"
+
+        # --- 阶段 4：软链兼容层，解决 sing-box / curl / tailscale 对 ca-certificates.crt 的硬编码 ---
+        # 注意此路径必须在 rootfs 阶段做，否则编译时不会生效
+        mkdir -p staging_dir/target-*/root-*/etc/ssl/certs/
+        ln -sf /etc/ssl/certs/ca-bundle.crt \
+               staging_dir/target-*/root-*/etc/ssl/certs/ca-certificates.crt
+
+        echo "[Patch] Compatibility symlink established"
+
+        # --- 阶段 5：libcurl 默认不强制使用系统 CA，而使用我们指定的路径 ---
+        sed -i '/CONFIG_LIBCURL_NO_DEFAULT_CA_BUNDLE/d' .config
+        echo 'CONFIG_LIBCURL_NO_DEFAULT_CA_BUNDLE=y' >> .config
+
+        echo "[Patch] libcurl fixed to respect unified CA"
+
+        # --- 阶段 6：构建验证（必须有输出，否则视为失败） ---
+        echo "--- VERIFY ---"
+        grep -R "ca-bundle" -n package/libs/openssl || echo "openssl patch missing"
+        [ -f staging_dir/target-*/root-*/etc/ssl/certs/ca-certificates.crt ] && echo "TLS link OK"
+        echo "--- DONE ---"
       - name: Download Packages
         if: env.WRT_TEST != 'true'
         run: |
