@@ -127,7 +127,22 @@ sed -i '/CONFIG_PACKAGE_ca-bundle/d' "$WRTPATH/.config" 2>/dev/null || true
 echo "CONFIG_PACKAGE_ca-bundle=y" >> "$WRTPATH/.config"
 
 ##############################################################################
-# 4) rootfs 证书路径处理 (target install 阶段执行即可)
+# 4) 专门修补 dockerd 依赖，否则 APK 构建冲突
+##############################################################################
+echo "[STEP4] 修补 dockerd/Makefile ..."
+find "$WRTPATH/feeds" -maxdepth 4 -type f -name "Makefile" \
+    | grep "dockerd" | while read F; do
+        echo "  → patch $F"
+        sed -i 's/ca-certificates/ca-bundle/g' "$F"
+done
+
+# 某些版本依赖行表现形式不同，再补一次
+grep -rl "DEPENDS.*ca-certificates" "$WRTPATH/feeds" 2>/dev/null | while read F; do
+    echo "  → patch $F"
+    sed -i 's/ca-certificates/ca-bundle/g' "$F"
+done
+##############################################################################
+# 5) rootfs 证书路径处理 (target install 阶段执行即可)
 #    目标: 生成镜像时，TLS 统一 → ca-bundle
 ##############################################################################
 ROOTFS_TARGET="$WRTPATH/build_dir/target-*/root-*/etc/ssl/certs"
