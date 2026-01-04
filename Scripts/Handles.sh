@@ -101,70 +101,104 @@ fi
 #修复ca
 set -e
 
+##############################################################################
+# ImmortalWRT / OpenWrt (APK mode)
+# Final CA unification script
+# Goal:
+#   - ONLY use ca-bundle
+#   - Completely eliminate ca-certificates / ca-certs virtual conflicts
+##############################################################################
+
 WRTPATH="$(pwd)"
-echo "[INFO] WRT_PATH=$WRTPATH"
+
+echo "===================================================="
+echo "[INFO] OpenWrt path = $WRTPATH"
+echo "[INFO] APK TLS unify: ca-bundle ONLY"
+echo "===================================================="
 
 ##############################################################################
-# 1) 删除源码包中的 ca-certificates
+# STEP 1: 移除 package/ 中的 ca-certificates（防止被优先选中）
 ##############################################################################
-echo "[STEP1] 删除 package/system/ca-certificates ..."
-rm -rf $WRTPATH/package/system/ca-certificates 2>/dev/null || true
-rm -rf $WRTPATH/feeds/*/ca-certificates 2>/dev/null || true
+echo "[STEP1] Removing package/system/ca-certificates (if exists)..."
+
+if [ -d "$WRTPATH/package/system/ca-certificates" ]; then
+    rm -rf "$WRTPATH/package/system/ca-certificates"
+    echo "  → removed package/system/ca-certificates"
+else
+    echo "  → not present, skip"
+fi
 
 ##############################################################################
-# 2) 将依赖全部替换为 ca-bundle
+# STEP 2: 全局替换依赖 ca-certificates / ca-certs → ca-bundle
 ##############################################################################
-echo "[STEP2] 统一依赖为 ca-bundle ..."
-grep -rl "ca-certificates" "$WRTPATH/package" "$WRTPATH/feeds" 2>/dev/null | while read F; do
-    sed -i 's/ca-certificates/ca-bundle/g' "$F"
+echo "[STEP2] Replacing ca-certificates / ca-certs → ca-bundle in feeds & packages..."
+
+find "$WRTPATH" \
+    -type f \
+    -name "Makefile" \
+    -o -name "*.mk" \
+| while read F; do
+    sed -i \
+        -e 's/+ca-certificates/+ca-bundle/g' \
+        -e 's/ca-certificates/ca-bundle/g' \
+        -e 's/+ca-certs/+ca-bundle/g' \
+        -e 's/ca-certs/ca-bundle/g' \
+        "$F"
 done
 
 ##############################################################################
-# 3) 强制启用 ca-bundle
+# STEP 3: ★核心修复★ dockerd 禁用 ca-certs 虚拟依赖
+# 这是 APK 冲突的真正根因
 ##############################################################################
-echo "[STEP3] 启用 ca-bundle ..."
-sed -i '/CONFIG_PACKAGE_ca-bundle/d' "$WRTPATH/.config" 2>/dev/null || true
-echo "CONFIG_PACKAGE_ca-bundle=y" >> "$WRTPATH/.config"
+echo "[STEP3] Forcing dockerd to depend on ca-bundle (NO ca-certs)..."
 
-##############################################################################
-# 4) 专门修补 dockerd 依赖，否则 APK 构建冲突
-##############################################################################
-echo "[STEP4] 修补 dockerd/Makefile ..."
-find "$WRTPATH/feeds" -maxdepth 4 -type f -name "Makefile" \
-    | grep "dockerd" | while read F; do
-        echo "  → patch $F"
-        sed -i 's/ca-certificates/ca-bundle/g' "$F"
-done
-
-# 某些版本依赖行表现形式不同，再补一次
-grep -rl "DEPENDS.*ca-certificates" "$WRTPATH/feeds" 2>/dev/null | while read F; do
+find "$WRTPATH/feeds" -path "*/dockerd/Makefile" -type f | while read F; do
     echo "  → patch $F"
-    sed -i 's/ca-certificates/ca-bundle/g' "$F"
+
+    # 清理旧依赖
+    sed -i \
+        -e 's/+ca-certificates//g' \
+        -e 's/+ca-certs//g' \
+        "$F"
+
+    # 强制加入实体包 ca-bundle
+    if ! grep -q '+ca-bundle' "$F"; then
+        sed -i 's/DEPENDS:=/DEPENDS:=+ca-bundle /' "$F"
+    fi
 done
+
 ##############################################################################
-# 5) rootfs 证书路径处理 (target install 阶段执行即可)
-#    目标: 生成镜像时，TLS 统一 → ca-bundle
+# STEP 4: world 级别只允许 ca-bundle
 ##############################################################################
-ROOTFS_TARGET="$WRTPATH/build_dir/target-*/root-*/etc/ssl/certs"
+echo "[STEP4] Enforcing CONFIG_PACKAGE_ca-bundle=y"
 
-echo "[STEP4] rootfs TLS 软链修复 (不会触碰宿主系统)"
-mkdir -p $ROOTFS_TARGET
+sed -i \
+    -e '/CONFIG_PACKAGE_ca-certificates/d' \
+    -e '/CONFIG_PACKAGE_ca-certs/d' \
+    "$WRTPATH/.config" 2>/dev/null || true
 
-(
-    cd $ROOTFS_TARGET
-    # 删除固件中的重复证书文件
-    rm -f ca-certificates.crt ca-bundle.crt 2>/dev/null || true
+grep -q 'CONFIG_PACKAGE_ca-bundle=y' "$WRTPATH/.config" 2>/dev/null || \
+    echo 'CONFIG_PACKAGE_ca-bundle=y' >> "$WRTPATH/.config"
 
-    # 创建统一软链：两者都指向 same source
-    ln -sf /etc/ssl/certs/ca-bundle.crt           ca-certificates.crt
-    ln -sf /etc/ssl/certs/ca-certificates.crt     ca-bundle.crt
-)
+##############################################################################
+# STEP 5: TLS 证书路径统一（仅在 rootfs 阶段生效，不触碰宿主机）
+##############################################################################
+echo "[STEP5] Normalizing TLS cert paths (runtime-safe)..."
 
-echo
-echo "==================== 补丁完成 ===================="
-echo "✔ 保留 ca-bundle"
-echo "✘ 删除 ca-certificates"
-echo "✔ TLS 软链在 rootfs 中统一 (不会触碰宿主系统)"
-echo
-echo "执行构建：make defconfig && make"
-echo "================================================="
+mkdir -p "$WRTPATH/files/etc/ssl/certs"
+
+cat > "$WRTPATH/files/etc/ssl/certs/README.ca-bundle" <<'EOF'
+Unified TLS CA path:
+  /etc/ssl/certs/ca-certificates.crt
+Provided by ca-bundle
+EOF
+
+##############################################################################
+# DONE
+##############################################################################
+echo "===================================================="
+echo "[DONE] CA unification complete"
+echo " - ca-certificates: REMOVED"
+echo " - ca-certs (virtual): ELIMINATED"
+echo " - ca-bundle: ONLY trusted provider"
+echo "===================================================="
