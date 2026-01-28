@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       #max-parallel: 3
       matrix:
-        CONFIG: [MEDIATEK, X86]
+        CONFIG: [MEDIATEK, X86, X86-IPTV]
         SOURCE: [VIKINGYFY/immortalwrt]
         BRANCH: [owrt]
 
