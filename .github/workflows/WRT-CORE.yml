@@ -153,6 +153,8 @@ jobs:
 
       - name: Modify kernel size 12M for RE-CS-07
         run: |
+          cd ./wrt/
+          FILE=$(find target/linux -name ipq60xx.mk)
           sed -i '/Device\/jdcloud_re-cs-07/,/endef/ s/KERNEL_SIZE := .*k/KERNEL_SIZE := 12288k/' target/linux/qualcommax/image/ipq60xx.mk
       
       - name: Custom Packages
