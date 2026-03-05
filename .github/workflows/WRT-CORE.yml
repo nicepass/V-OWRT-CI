@@ -182,9 +182,9 @@ jobs:
         run: |
           cd ./wrt/
 
-          # 创建 tailscale procd service 脚本
           mkdir -p package/network/services/tailscale/files
 
+          # tailscale.init
           cat > package/network/services/tailscale/files/tailscale.init << 'EOF'
           #!/bin/sh /etc/rc.common
           START=99
@@ -200,14 +200,26 @@ jobs:
           procd_close_instance
           }
           EOF
-
           chmod +x package/network/services/tailscale/files/tailscale.init
 
-          # 创建默认 UCI 配置
+          # tailscale.config
           cat > package/network/services/tailscale/files/tailscale.config << 'EOF'
           config tailscale 'settings'
           option enabled '0'
           EOF
+
+          # 补 Makefile install（如果不存在）
+          if ! grep -q "Package/tailscale/install" package/network/services/tailscale/Makefile; then
+          echo 'define Package/tailscale/install
+          $(INSTALL_DIR) $(1)/etc/init.d
+          $(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
+          $(INSTALL_DIR) $(1)/etc/config
+          $(INSTALL_DATA) ./files/tailscale.config $(1)/etc/config/tailscale
+          $(INSTALL_DIR) $(1)/usr/sbin
+          $(INSTALL_BIN) $(PKG_BUILD_DIR)/tailscaled $(1)/usr/sbin/tailscaled
+          $(INSTALL_BIN) $(PKG_BUILD_DIR)/tailscale $(1)/usr/sbin/tailscale
+          endef' >> package/network/services/tailscale/Makefile
+          fi
           
       - name: Download Packages
         if: env.WRT_TEST != 'true'
