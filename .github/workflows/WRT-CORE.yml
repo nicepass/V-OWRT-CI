@@ -178,20 +178,22 @@ jobs:
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
 
-      - name: Patch Tailscale Service and Default UCI
+      - name: Inject Tailscale Service
         run: |
           cd ./wrt/
 
-          mkdir -p package/network/services/tailscale/files
+          mkdir -p files/etc/init.d
+          mkdir -p files/etc/config
 
-          # tailscale.init
-          cat > package/network/services/tailscale/files/tailscale.init << 'EOF'
+          # init script
+          cat > files/etc/init.d/tailscale << 'EOF'
           #!/bin/sh /etc/rc.common
-          START=99
+          START=95
           USE_PROCD=1
 
           start_service() {
           mkdir -p /var/run/tailscale
+
           procd_open_instance
           procd_set_param command /usr/sbin/tailscaled \
           --state=/etc/tailscale.state \
@@ -200,13 +202,14 @@ jobs:
           procd_close_instance
           }
           EOF
-          chmod +x package/network/services/tailscale/files/tailscale.init
 
-          # tailscale.config
-          cat > package/network/services/tailscale/files/tailscale.config << 'EOF'
+          chmod +x files/etc/init.d/tailscale
+
+          # default config
+          cat > files/etc/config/tailscale << 'EOF'
           config tailscale 'settings'
           option enabled '0'
-          EOF          
+          EOF
       
       - name: Download Packages
         if: env.WRT_TEST != 'true'
@@ -221,17 +224,6 @@ jobs:
           cd ./wrt/
 
           make -j$(nproc) || make -j1 V=s
-
-      - name: Inject Tailscale into RootFS
-        run: |
-          cd ./wrt/
-          ROOTFS=$(find bin/targets -type d -name rootfs | head -n1)
-          echo "Inject tailscale files into $ROOTFS"
-          mkdir -p $ROOTFS/etc/init.d
-          mkdir -p $ROOTFS/etc/config
-          cp package/network/services/tailscale/files/tailscale.init $ROOTFS/etc/init.d/tailscale
-          chmod +x $ROOTFS/etc/init.d/tailscale
-          cp package/network/services/tailscale/files/tailscale.config $ROOTFS/etc/config/tailscale
       
       - name: Machine Information
         run: |
