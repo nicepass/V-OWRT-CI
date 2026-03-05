@@ -206,21 +206,8 @@ jobs:
           cat > package/network/services/tailscale/files/tailscale.config << 'EOF'
           config tailscale 'settings'
           option enabled '0'
-          EOF
-
-          # 补 Makefile install（如果不存在）
-          if ! grep -q "Package/tailscale/install" package/network/services/tailscale/Makefile; then
-          echo 'define Package/tailscale/install
-          $(INSTALL_DIR) $(1)/etc/init.d
-          $(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
-          $(INSTALL_DIR) $(1)/etc/config
-          $(INSTALL_DATA) ./files/tailscale.config $(1)/etc/config/tailscale
-          $(INSTALL_DIR) $(1)/usr/sbin
-          $(INSTALL_BIN) $(PKG_BUILD_DIR)/tailscaled $(1)/usr/sbin/tailscaled
-          $(INSTALL_BIN) $(PKG_BUILD_DIR)/tailscale $(1)/usr/sbin/tailscale
-          endef' >> package/network/services/tailscale/Makefile
-          fi
-          
+          EOF          
+      
       - name: Download Packages
         if: env.WRT_TEST != 'true'
         run: |
@@ -235,6 +222,17 @@ jobs:
 
           make -j$(nproc) || make -j1 V=s
 
+      - name: Inject Tailscale into RootFS
+        run: |
+          cd ./wrt/
+          ROOTFS=$(find bin/targets -type d -name rootfs | head -n1)
+          echo "Inject tailscale files into $ROOTFS"
+          mkdir -p $ROOTFS/etc/init.d
+          mkdir -p $ROOTFS/etc/config
+          cp package/network/services/tailscale/files/tailscale.init $ROOTFS/etc/init.d/tailscale
+          chmod +x $ROOTFS/etc/init.d/tailscale
+          cp package/network/services/tailscale/files/tailscale.config $ROOTFS/etc/config/tailscale
+      
       - name: Machine Information
         run: |
           cd ./wrt/
