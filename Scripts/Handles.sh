@@ -195,12 +195,10 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 
 	# 3. 解决 DAED 核心依赖及非交互式编译报错
 	# 降级到 6.12 可以规避大部分新选项询问，同时补齐大鹅 eBPF 运行必须的内存和 JIT 配置
-	cat >> ../.config <<EOF
-    CONFIG_KERNEL_BPF_JIT=y
-    CONFIG_KERNEL_MEMCG=y
-    CONFIG_KERNEL_MEMCG_SWAP=y
-    CONFIG_KERNEL_SKB_EXTENSIONS=y
-EOF
+	echo "CONFIG_KERNEL_BPF_JIT=y" >> ../.config
+	echo "CONFIG_KERNEL_MEMCG=y" >> ../.config
+	echo "CONFIG_KERNEL_MEMCG_SWAP=y" >> ../.config
+	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
 
 	cd $PKG_PATH && echo "DAED independent flow has been successfully injected!"
 fi
