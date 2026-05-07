@@ -182,8 +182,8 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
 	echo "Triggering independent DAED compilation flow..."
 
-	# 1. 内核版本强制降级至 6.6 LTS (最稳定的 eBPF 支持版本)
-	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.6/g' ../target/linux/qualcommax/Makefile
+	# 1. 内核版本强制降级至6.12
+	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' ../target/linux/qualcommax/Makefile
 
 	# 2. 批量调整指定设备的内核分区大小至 12M (12288k)
 	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-cs-01" "link_nn6000-v1")
@@ -198,12 +198,11 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo "CONFIG_KERNEL_MEMCG_SWAP=y" >> ../.config
 	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
 
-	# 4. 修复 No-WIFI 导致的 hostapd 编译 Bug (本次新增)
-	echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
-	echo "CONFIG_WPA_11AX_SUPPORT=y" >> ../.config
-	echo "CONFIG_WPA_11BE_SUPPORT=y" >> ../.config
+	# 4. 暴力修复无 Wi-Fi 驱动环境下 hostapd 的源码 Bug 
+	# 直接向 Makefile 注入 CFLAGS 宏，无视 Kconfig 的依赖树强制开启 11AX/11BE 结构体
+	sed -i '/\/package.mk/i TARGET_CFLAGS += -DCONFIG_IEEE80211AX -DCONFIG_IEEE80211BE' ../package/network/services/hostapd/Makefile
 	
-	# 预防性补充：以防 6.6 依然询问 Page Size
+	# 预防性补充：以防 6.12 依然询问 Page Size
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
 
 	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected!"
