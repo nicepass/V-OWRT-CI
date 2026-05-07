@@ -197,6 +197,11 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo "CONFIG_KERNEL_MEMCG=y" >> ../.config
 	echo "CONFIG_KERNEL_MEMCG_SWAP=y" >> ../.config
 	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
+
+	# 4. 修复 No-WIFI 导致的 hostapd 编译 Bug (本次新增)
+	echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
+	echo "CONFIG_WPA_11AX_SUPPORT=y" >> ../.config
+	echo "CONFIG_WPA_11BE_SUPPORT=y" >> ../.config
 	
 	# 预防性补充：以防 6.6 依然询问 Page Size
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
