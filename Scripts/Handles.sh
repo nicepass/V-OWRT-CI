@@ -173,3 +173,34 @@ if [ -f "$RUST_FILE" ]; then
 
 	cd $PKG_PATH && echo "rust has been fixed!"
 fi
+
+# =================================================================
+# 独立编译流程：针对 DAED 专属环境的隔离注入
+# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，如果不包含则自动跳过，不影响主流程
+# =================================================================
+if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
+	echo " "
+	echo "Triggering independent DAED compilation flow..."
+
+	# 1. 内核版本强制降级至 6.12
+	# Handles.sh 运行在 wrt/package 目录下，因此使用 ../target/ 访问目标平台
+	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' ../target/linux/qualcommax/Makefile
+
+	# 2. 批量调整指定设备的内核分区大小至 12M (12288k)
+	# 包含对 WRT-CORE.yml 中现有操作的覆盖，确保三款设备统一修改
+	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-cs-01" "link_nn6000-v1")
+	for DEV in "${DAED_DEVICES[@]}"; do
+		sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" ../target/linux/qualcommax/image/ipq60xx.mk
+	done
+
+	# 3. 解决 DAED 核心依赖及非交互式编译报错
+	# 降级到 6.12 可以规避大部分新选项询问，同时补齐大鹅 eBPF 运行必须的内存和 JIT 配置
+	cat >> ../.config <<EOF
+    CONFIG_KERNEL_BPF_JIT=y
+    CONFIG_KERNEL_MEMCG=y
+    CONFIG_KERNEL_MEMCG_SWAP=y
+    CONFIG_KERNEL_SKB_EXTENSIONS=y
+EOF
+
+	cd $PKG_PATH && echo "DAED independent flow has been successfully injected!"
+fi
