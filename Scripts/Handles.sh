@@ -205,5 +205,5 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	# 预防性补充：以防 6.12 依然询问 Page Size
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
 
-	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected!"
+	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.12) has been successfully injected!"
 fi
