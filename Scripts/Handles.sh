@@ -176,33 +176,45 @@ fi
 
 # =================================================================
 # 独立编译流程：针对 DAED 专属环境的隔离注入
-# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，如果不包含则自动跳过，不影响主流程
+# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，如果不包含则自动跳过
 # =================================================================
 if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
 	echo "Triggering independent DAED compilation flow..."
 
-	# 1. 内核版本强制降级至6.6
+	# 1. 内核版本强制降级至 6.6 LTS (最稳 eBPF 支持)
 	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.6/g' ../target/linux/qualcommax/Makefile
 
-	# 2. 批量调整指定设备的内核分区大小至 12M (12288k)
+	# 2. 批量调整指定设备的内核分区大小至 12M
 	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-cs-01" "link_nn6000-v1")
 	for DEV in "${DAED_DEVICES[@]}"; do
 		sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" ../target/linux/qualcommax/image/ipq60xx.mk
 	done
 
 	# 3. 解决 DAED 核心依赖及非交互式编译报错
-	# 再次确认：双引号内的 CONFIG_ 前面绝对不能有任何空格或 Tab！
 	echo "CONFIG_KERNEL_BPF_JIT=y" >> ../.config
 	echo "CONFIG_KERNEL_MEMCG=y" >> ../.config
 	echo "CONFIG_KERNEL_MEMCG_SWAP=y" >> ../.config
 	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
-    # 预防性补充：以防 6.6 依然询问 Page Size
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
-	
-	# 4. 暴力修复无 Wi-Fi 驱动环境下 hostapd 的源码 Bug 
-	# 直接向 Makefile 注入 CFLAGS 宏，无视 Kconfig 的依赖树强制开启 11AX/11BE 结构体
-	sed -i '/\/package.mk/i TARGET_CFLAGS += -DCONFIG_IEEE80211AX -DCONFIG_IEEE80211BE' ../package/network/services/hostapd/Makefile	
+
+	# 4. 根据 WIFI 状态自动分流处理 (智能判定)
+	if [[ "${WRT_CONFIG^^}" == *"WIFI-NO"* ]]; then
+		echo "Detected WIFI-NO config. Applying hostapd removal..."
+		# 彻底封杀 Wi-Fi 管理程序，解决无驱动环境下的编译 Bug
+		echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> ../.config
+		echo "# CONFIG_PACKAGE_wpad-basic-openssl is not set" >> ../.config
+		echo "# CONFIG_PACKAGE_wpad-full-openssl is not set" >> ../.config
+		echo "# CONFIG_PACKAGE_hostapd is not set" >> ../.config
+		echo "# CONFIG_PACKAGE_hostapd-common is not set" >> ../.config
+
+	elif [[ "${WRT_CONFIG^^}" == *"WIFI-YES"* ]]; then
+		echo "Detected WIFI-YES config. Retaining Wi-Fi components..."
+		# 对于 WIFI-YES 配置，只要你在 .txt 文件里写了 CONFIG_PACKAGE_kmod-ath11k=y
+		# 系统会自动开启 11ax 支持，不会触发那个 Bug。
+		# 保险起见，强行保活 mac80211 核心依赖
+		echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
+	fi
 
 	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected!"
 fi
