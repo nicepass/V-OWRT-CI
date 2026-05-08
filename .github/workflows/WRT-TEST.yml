@@ -19,6 +19,7 @@ on:
           - IPQ60XX-WIFI-NO-DAED
           - IPQ60XX-WIFI-NO-IPTV
           - IPQ60XX-WIFI-NO-DOCKERIPTV
+          - IPQ60XX-WIFI-YES-DAED
           - IPQ807X-WIFI-YES
           - IPQ807X-WIFI-NO
           - MEDIATEK-WIFI-YES
