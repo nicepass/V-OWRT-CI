@@ -176,13 +176,13 @@ fi
 
 # =================================================================
 # 独立编译流程：针对 DAED 专属环境的隔离注入
-# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，如果不包含则自动跳过
+# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，自动进行软硬隔离
 # =================================================================
 if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
 	echo "Triggering independent DAED compilation flow..."
 
-	# 1. 内核版本强制降级至 6.6 LTS (最稳 eBPF 支持)
+	# 1. 内核版本强制降级至 6.6 LTS
 	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.6/g' ../target/linux/qualcommax/Makefile
 
 	# 2. 批量调整指定设备的内核分区大小至 12M
@@ -198,21 +198,30 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
 
-	# 4. 根据 WIFI 状态自动分流处理 (智能判定)
+	# 4. 根据 WIFI 状态自动分流处理
 	if [[ "${WRT_CONFIG^^}" == *"WIFI-NO"* ]]; then
-		echo "Detected WIFI-NO config. Applying hostapd removal..."
-		# 彻底封杀 Wi-Fi 管理程序，解决无驱动环境下的编译 Bug
+		echo "Detected WIFI-NO config. Applying aggressive hostapd eradication..."
+		
+		# [物理清除第一层]：从 OpenWrt 全局/平台/设备的默认构建清单中彻底抹除 wpad 相关包
+		# 这样 make defconfig 就再也找不到强行恢复它的理由了
+		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../include/target.mk
+		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../target/linux/qualcommax/Makefile
+		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../target/linux/qualcommax/image/*.mk
+		
+		# [物理清除第二层]：写入 Kconfig 封杀令
 		echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> ../.config
 		echo "# CONFIG_PACKAGE_wpad-basic-openssl is not set" >> ../.config
 		echo "# CONFIG_PACKAGE_wpad-full-openssl is not set" >> ../.config
 		echo "# CONFIG_PACKAGE_hostapd is not set" >> ../.config
 		echo "# CONFIG_PACKAGE_hostapd-common is not set" >> ../.config
 
+		# [物理清除第三层] (终极绝杀)：直接修改 ImmortalWrt 的补丁文件，把引发报错的 Bug 行注释掉
+		# 即使某种黑魔法强行拉起了 hostapd 编译，C 编译器看到的也是注释，直接无视报错！
+		find ../package/network/services/hostapd/patches/ -type f -name "*.patch" -exec sed -i 's/^[+-].*he_mu_edca\.he_qos_info.*/+ \/\/ bypassed he_mu_edca bug/g' {} +
+
 	elif [[ "${WRT_CONFIG^^}" == *"WIFI-YES"* ]]; then
 		echo "Detected WIFI-YES config. Retaining Wi-Fi components..."
-		# 对于 WIFI-YES 配置，只要你在 .txt 文件里写了 CONFIG_PACKAGE_kmod-ath11k=y
-		# 系统会自动开启 11ax 支持，不会触发那个 Bug。
-		# 保险起见，强行保活 mac80211 核心依赖
+		# 对于保留 WIFI 的配置，强制保活 mac80211 核心支持，防止依赖断链
 		echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
 	fi
 
