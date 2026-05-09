@@ -192,24 +192,24 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	done
 
 	# 3. 解决 DAED 核心依赖及非交互式编译报错
-	echo "CONFIG_KERNEL_BPF_JIT=y" >> ../.config
-	echo "CONFIG_KERNEL_MEMCG=y" >> ../.config
-	echo "CONFIG_KERNEL_MEMCG_SWAP=y" >> ../.config
-	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
-	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
+	#echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
 
-	# 4. 终极免疫 hostapd 编译 Bug (双层锁死大法)
-	# 第一层：在 .config 层面强行供给依赖，堵死 defconfig 的抹除逻辑
-	echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
-	echo "CONFIG_WPA_11AX_SUPPORT=y" >> ../.config
-	echo "CONFIG_WPA_11BE_SUPPORT=y" >> ../.config
+	# 4. 终极绝杀：源码级免疫 hostapd 的 Wi-Fi 6/7 补丁 Bug
+	# 既然 OpenWrt 的依赖检测总会把宏定义洗掉，我们就直接修改底层规则，强行喂给编译器
+	HOSTAPD_CONFIG_IN="../package/network/services/hostapd/Config.in"
+	HOSTAPD_MAKEFILE="../package/network/services/hostapd/Makefile"
 
-	# 第二层（绝杀）：源码级劫持 hostapd Makefile
-	# 在加载完 OpenWrt 全局规则后，强行覆盖本地环境变量，让编译器 100% 开启 AX 和 BE
-	HOSTAPD_MK="../package/network/services/hostapd/Makefile"
-	if [ -f "$HOSTAPD_MK" ]; then
-		sed -i 's/include \$(TOPDIR)\/rules.mk/include \$(TOPDIR)\/rules.mk\nCONFIG_WPA_11AX_SUPPORT:=y\nCONFIG_WPA_11BE_SUPPORT:=y/g' $HOSTAPD_MK
+	# [第一道锁]：篡改 Kconfig 源头图纸，让生成配置时默认就是开启状态
+	if [ -f "$HOSTAPD_CONFIG_IN" ]; then
+		sed -i 's/config WPA_11AX_SUPPORT/config WPA_11AX_SUPPORT\n\tdefault y/g' $HOSTAPD_CONFIG_IN
+		sed -i 's/config WPA_11BE_SUPPORT/config WPA_11BE_SUPPORT\n\tdefault y/g' $HOSTAPD_CONFIG_IN
 	fi
 
-	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected!"
+	# [第二道锁]：植入 Makefile 内部，在加载完环境变量后，强行赋予 AX/BE = y
+	if [ -f "$HOSTAPD_MAKEFILE" ]; then
+		awk '/include \$\(INCLUDE_DIR\)\/package\.mk/ { print; print "CONFIG_WPA_11AX_SUPPORT:=y"; print "CONFIG_WPA_11BE_SUPPORT:=y"; next }1' $HOSTAPD_MAKEFILE > tmp.mk
+		mv tmp.mk $HOSTAPD_MAKEFILE
+	fi
+
+	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected with Hostapd HOTFIX!"
 fi
