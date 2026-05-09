@@ -175,41 +175,17 @@ if [ -f "$RUST_FILE" ]; then
 fi
 
 # =================================================================
-# 独立编译流程：针对 DAED 专属环境的隔离注入
-# 逻辑：检测环境变量 WRT_CONFIG 是否包含 DAED，自动进行软硬隔离
+# 独立编译流程：针对 DAED 的源码级硬修改
 # =================================================================
 if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
-	echo "Triggering independent DAED compilation flow..."
+	echo "Triggering DAED hardware modifications..."
 
-	# 1. 内核版本强制降级至 6.6 LTS (最稳 eBPF 支持)
-	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.6/g' ../target/linux/qualcommax/Makefile
-
-	# 2. 批量调整指定设备的内核分区大小至 12M
+	# 调整指定设备的内核分区大小至 12M
 	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-cs-01" "link_nn6000-v1")
 	for DEV in "${DAED_DEVICES[@]}"; do
 		sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" ../target/linux/qualcommax/image/ipq60xx.mk
 	done
 
-	# 3. 解决 DAED 核心依赖及非交互式编译报错
-	#echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
-
-	# 4. 终极绝杀：源码级免疫 hostapd 的 Wi-Fi 6/7 补丁 Bug
-	# 既然 OpenWrt 的依赖检测总会把宏定义洗掉，我们就直接修改底层规则，强行喂给编译器
-	HOSTAPD_CONFIG_IN="../package/network/services/hostapd/Config.in"
-	HOSTAPD_MAKEFILE="../package/network/services/hostapd/Makefile"
-
-	# [第一道锁]：篡改 Kconfig 源头图纸，让生成配置时默认就是开启状态
-	if [ -f "$HOSTAPD_CONFIG_IN" ]; then
-		sed -i 's/config WPA_11AX_SUPPORT/config WPA_11AX_SUPPORT\n\tdefault y/g' $HOSTAPD_CONFIG_IN
-		sed -i 's/config WPA_11BE_SUPPORT/config WPA_11BE_SUPPORT\n\tdefault y/g' $HOSTAPD_CONFIG_IN
-	fi
-
-	# [第二道锁]：植入 Makefile 内部，在加载完环境变量后，强行赋予 AX/BE = y
-	if [ -f "$HOSTAPD_MAKEFILE" ]; then
-		awk '/include \$\(INCLUDE_DIR\)\/package\.mk/ { print; print "CONFIG_WPA_11AX_SUPPORT:=y"; print "CONFIG_WPA_11BE_SUPPORT:=y"; next }1' $HOSTAPD_MAKEFILE > tmp.mk
-		mv tmp.mk $HOSTAPD_MAKEFILE
-	fi
-
-	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected with Hostapd HOTFIX!"
+	cd $PKG_PATH && echo "DAED 12M kernel size patch applied successfully!"
 fi
