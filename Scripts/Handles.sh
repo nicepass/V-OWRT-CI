@@ -182,7 +182,7 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo "Triggering DAED hardware modifications..."
 
 	# 1. 调整指定设备的内核分区大小至 12M
-	DAED_DEVICES=("jdcloud_re-ss-07" "jdcloud_re-ss-01" "link_nn6000-v1")
+	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-v1")
 	for DEV in "${DAED_DEVICES[@]}"; do
 		sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" ../target/linux/qualcommax/image/ipq60xx.mk
 	done
