@@ -182,7 +182,7 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
 	echo "Triggering independent DAED compilation flow..."
 
-	# 1. 内核版本强制降级至 6.6 LTS
+	# 1. 内核版本强制降级至 6.6 LTS (最稳 eBPF 支持)
 	sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.6/g' ../target/linux/qualcommax/Makefile
 
 	# 2. 批量调整指定设备的内核分区大小至 12M
@@ -198,31 +198,17 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo "CONFIG_KERNEL_SKB_EXTENSIONS=y" >> ../.config
 	echo "CONFIG_KERNEL_ARM64_4K_PAGES=y" >> ../.config
 
-	# 4. 根据 WIFI 状态自动分流处理
-	if [[ "${WRT_CONFIG^^}" == *"WIFI-NO"* ]]; then
-		echo "Detected WIFI-NO config. Applying aggressive hostapd eradication..."
-		
-		# [物理清除第一层]：从 OpenWrt 全局/平台/设备的默认构建清单中彻底抹除 wpad 相关包
-		# 这样 make defconfig 就再也找不到强行恢复它的理由了
-		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../include/target.mk
-		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../target/linux/qualcommax/Makefile
-		sed -i -E 's/wpad-(basic|full|mini)-[a-z]+//g' ../target/linux/qualcommax/image/*.mk
-		
-		# [物理清除第二层]：写入 Kconfig 封杀令
-		echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> ../.config
-		echo "# CONFIG_PACKAGE_wpad-basic-openssl is not set" >> ../.config
-		echo "# CONFIG_PACKAGE_wpad-full-openssl is not set" >> ../.config
-		echo "# CONFIG_PACKAGE_hostapd is not set" >> ../.config
-		echo "# CONFIG_PACKAGE_hostapd-common is not set" >> ../.config
+	# 4. 终极免疫 hostapd 编译 Bug (双层锁死大法)
+	# 第一层：在 .config 层面强行供给依赖，堵死 defconfig 的抹除逻辑
+	echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
+	echo "CONFIG_WPA_11AX_SUPPORT=y" >> ../.config
+	echo "CONFIG_WPA_11BE_SUPPORT=y" >> ../.config
 
-		# [物理清除第三层] (终极绝杀)：直接修改 ImmortalWrt 的补丁文件，把引发报错的 Bug 行注释掉
-		# 即使某种黑魔法强行拉起了 hostapd 编译，C 编译器看到的也是注释，直接无视报错！
-		find ../package/network/services/hostapd/patches/ -type f -name "*.patch" -exec sed -i 's/^[+-].*he_mu_edca\.he_qos_info.*/+ \/\/ bypassed he_mu_edca bug/g' {} +
-
-	elif [[ "${WRT_CONFIG^^}" == *"WIFI-YES"* ]]; then
-		echo "Detected WIFI-YES config. Retaining Wi-Fi components..."
-		# 对于保留 WIFI 的配置，强制保活 mac80211 核心支持，防止依赖断链
-		echo "CONFIG_PACKAGE_kmod-mac80211=y" >> ../.config
+	# 第二层（绝杀）：源码级劫持 hostapd Makefile
+	# 在加载完 OpenWrt 全局规则后，强行覆盖本地环境变量，让编译器 100% 开启 AX 和 BE
+	HOSTAPD_MK="../package/network/services/hostapd/Makefile"
+	if [ -f "$HOSTAPD_MK" ]; then
+		sed -i 's/include \$(TOPDIR)\/rules.mk/include \$(TOPDIR)\/rules.mk\nCONFIG_WPA_11AX_SUPPORT:=y\nCONFIG_WPA_11BE_SUPPORT:=y/g' $HOSTAPD_MK
 	fi
 
 	cd $PKG_PATH && echo "DAED independent flow (Kernel 6.6) has been successfully injected!"
