@@ -181,11 +181,17 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	echo " "
 	echo "Triggering DAED hardware modifications..."
 
-	# 调整指定设备的内核分区大小至 12M
+	# 1. 调整指定设备的内核分区大小至 12M
 	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-cs-01" "link_nn6000-v1")
 	for DEV in "${DAED_DEVICES[@]}"; do
 		sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" ../target/linux/qualcommax/image/ipq60xx.mk
 	done
 
-	cd $PKG_PATH && echo "DAED 12M kernel size patch applied successfully!"
+	# 2. 终极防爆：直接向高通平台的底层内核图纸注入禁用 BRBE 的指令
+	# 注意：直接修改内核配置时，前缀是 CONFIG_ 而不是 CONFIG_KERNEL_
+	if [ -f "../target/linux/qualcommax/config-6.18" ]; then
+		echo "# CONFIG_ARM64_BRBE is not set" >> ../target/linux/qualcommax/config-6.18
+	fi
+
+	cd $PKG_PATH && echo "DAED 12M kernel size & BRBE patch applied successfully!"
 fi
