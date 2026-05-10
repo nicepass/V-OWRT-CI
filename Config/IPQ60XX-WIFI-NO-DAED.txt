@@ -28,3 +28,5 @@ CONFIG_KERNEL_KPROBES=y
 # CONFIG_KERNEL_ARM64_BRBE is not set
 #添加大鹅插件
 CONFIG_PACKAGE_luci-app-daed=y
+#添加docker插件
+CONFIG_PACKAGE_luci-app-dockerman=y
