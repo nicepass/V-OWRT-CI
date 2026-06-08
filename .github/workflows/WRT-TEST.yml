@@ -26,6 +26,7 @@ on:
           - MEDIATEK-WIFI-NO
           - MTK-CPE
           - ROCKCHIP
+          - E20C
           - X86
           - X86-IPTV
           - TEST
