@@ -352,3 +352,32 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 
 	cd $PKG_PATH && echo "DAED 12M kernel size & BRBE patch applied successfully!"
 fi
+
+# =================================================================
+# 强行从官方 master 分支拉取最新版 Golang 编译器 (已支持 Go 1.24+)
+# =================================================================
+echo "Fetching latest Golang from openwrt/packages master branch..."
+
+# 通过 PKG_PATH 推导 feeds 目录的绝对路径
+FEEDS_DIR="$(dirname "$PKG_PATH")/feeds"
+
+# 确保旧的残留彻底清理干净
+rm -rf "$FEEDS_DIR/packages/lang/golang"
+rm -rf "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go"
+
+# 浅克隆官方最新的 master 主分支到临时目录
+git clone --depth=1 https://github.com/openwrt/packages.git "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go"
+
+# 移动新版 golang 到 feeds 目录，并清理临时目录
+if [ -d "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go/lang/golang" ]; then
+	mv "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go/lang/golang" "$FEEDS_DIR/packages/lang/golang"
+	echo "Golang source code replaced successfully."
+else
+	echo "Error: Failed to fetch golang from upstream master!"
+fi
+rm -rf "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go"
+
+# 重新向系统安装刷新 feeds 关联，确保依赖识别
+$(dirname "$PKG_PATH")/scripts/feeds install -a golang
+
+echo "Golang upgrade patch processed!"
