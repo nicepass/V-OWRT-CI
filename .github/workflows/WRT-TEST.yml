@@ -15,6 +15,7 @@ on:
         type: choice
         options:
           - IPQ60XX-WIFI-YES
+          - IPQ60XX-WIFI-YES-CPE
           - IPQ60XX-WIFI-NO
           - IPQ60XX-WIFI-NO-DAED
           - IPQ60XX-WIFI-NO-IPTV
