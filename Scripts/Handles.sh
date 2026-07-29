@@ -382,10 +382,36 @@ $(dirname "$PKG_PATH")/scripts/feeds install -a golang
 
 echo "Golang upgrade patch processed!"
 
-# 修复 IPQ60XX 下 QModem 与 qca-nss-ecm 编译冲突 (nss_rmnet_rx_get_ifnum undefined)
+# 高通 IPQ60XX 平台 / NSS ECM 驱动冲突修复
+# ---------------------------------------------------------------
+# 1. 路径自动识别与定位（防止 find: 'package/': No such file or directory）
+# ---------------------------------------------------------------
+WRT_PATH=""
+
+if [ -d "/mnt/build_wrt/package" ]; then
+    WRT_PATH="/mnt/build_wrt"
+elif [ -d "package" ]; then
+    WRT_PATH="."
+elif [ -d "openwrt/package" ]; then
+    WRT_PATH="openwrt"
+fi
+
+if [ -n "$WRT_PATH" ]; then
+    echo "========================================="
+    echo "Located OpenWrt Source Root at: $WRT_PATH"
+    echo "========================================="
+    cd "$WRT_PATH" || exit 1
+else
+    echo "Warning: Could not find 'package' directory! Skipping patches."
+fi
+
+# ---------------------------------------------------------------
+# 3. 高通 IPQ60XX 平台 / NSS ECM 驱动冲突修复 (nss_rmnet_rx_get_ifnum undefined)
+# ---------------------------------------------------------------
 if [ -d "package/qca-nss/qca-nss-ecm" ]; then
+    echo "Applying IPQ60XX NSS ECM patch for QModem / RawIP..."
+    # 禁用 ECM 中与原生 RMNet 硬件加速绑定的配置，解决 missing symbol 编译中断
     sed -i 's/ECM_INTERFACE_RAWIP_ENABLE=y/ECM_INTERFACE_RAWIP_ENABLE=n/g' package/qca-nss/qca-nss-ecm/Makefile 2>/dev/null || true
-    # 如果 ECM 开启了与 RMNet/QMI 绑定的特定加速特性，尝试关闭 ECM 中对 rmnet 接口的强绑定
     find package/qca-nss/qca-nss-ecm/ -type f -name "Makefile" -exec sed -i 's/ECM_DRIVER_RMNET_ENABLE=y/ECM_DRIVER_RMNET_ENABLE=n/g' {} + 2>/dev/null || true
 fi
 
