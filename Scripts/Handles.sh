@@ -381,3 +381,12 @@ rm -rf "$(dirname "$PKG_PATH")/tmp/openwrt-packages-go"
 $(dirname "$PKG_PATH")/scripts/feeds install -a golang
 
 echo "Golang upgrade patch processed!"
+
+# 修复 IPQ60XX 下 QModem 与 qca-nss-ecm 编译冲突 (nss_rmnet_rx_get_ifnum undefined)
+if [ -d "package/qca-nss/qca-nss-ecm" ]; then
+    sed -i 's/ECM_INTERFACE_RAWIP_ENABLE=y/ECM_INTERFACE_RAWIP_ENABLE=n/g' package/qca-nss/qca-nss-ecm/Makefile 2>/dev/null || true
+    # 如果 ECM 开启了与 RMNet/QMI 绑定的特定加速特性，尝试关闭 ECM 中对 rmnet 接口的强绑定
+    find package/qca-nss/qca-nss-ecm/ -type f -name "Makefile" -exec sed -i 's/ECM_DRIVER_RMNET_ENABLE=y/ECM_DRIVER_RMNET_ENABLE=n/g' {} + 2>/dev/null || true
+fi
+
+echo "qca-nss-ecm has been fixed!"
