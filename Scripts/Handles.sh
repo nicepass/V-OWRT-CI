@@ -417,9 +417,6 @@ fi
 
 echo "qca-nss-ecm has been fixed!"
 
-# 修改 ovpn-dco 的 C 源码以适配 Linux 6.18 内核
-OVPN_TCP_C=$(find build_dir/ package/ feeds/ -name "tcp.c" | grep "ovpn" 2>/dev/null)
-if [ -n "$OVPN_TCP_C" ]; then
-    # 修复 recvmsg 参数个数不匹配问题
-    sed -i 's/int flags, int \*addr_len/int flags/g' $OVPN_TCP_C
-fi
+# 删除冲突的 ovpn-dco 包
+rm -rf feeds/packages/kernel/ovpn-dco
+echo "ovpn-dco has been deleted!"
