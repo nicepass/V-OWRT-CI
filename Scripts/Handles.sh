@@ -421,13 +421,19 @@ echo "qca-nss-ecm has been fixed!"
 rm -rf feeds/packages/kernel/ovpn-dco
 echo "ovpn-dco has been deleted!"
 
-# 修复 ipq6018-ess.dtsi 里的缺失标签依赖（防止其他机型也踩雷）
-ESS_DTSI=$(find target/linux/qualcommax/ -name "ipq6018-ess.dtsi" 2>/dev/null)
-if [ -n "$ESS_DTSI" ]; then
-    echo "正在清除 $ESS_DTSI 中未定义的 nvmem-cells 标签引用..."
-    sed -i '/nvmem-cells = <&macaddr_wan>/d' "$ESS_DTSI" 2>/dev/null || true
-    sed -i '/nvmem-cells = <&macaddr_lan>/d' "$ESS_DTSI" 2>/dev/null || true
-    sed -i '/nvmem-cell-names/d' "$ESS_DTSI" 2>/dev/null || true
-fi
+# =====================================================================
+# 彻底移除 gl-ax1800 编译节点（解决 Linux 6.18 下 DTB 报错）
+# =====================================================================
 
-echo "ess has been fixed!"
+# 1. 查找并删除源码树中所有 gl-ax1800 的 dts / dtsi 文件
+find target/linux/qualcommax/ -type f -name "*gl-ax1800*" -exec rm -vf {} \;
+
+# 2. 从 qualcommax 的 image/Makefile 或 Makefile 中抹除 gl-ax1800 的 Device 定义
+find target/linux/qualcommax/ -type f -name "Makefile*" | xargs sed -i '/gl-ax1800/d' 2>/dev/null || true
+find target/linux/qualcommax/ -type f -name "Makefile*" | xargs sed -i '/glinet_gl-ax1800/d' 2>/dev/null || true
+
+# 3. 补齐标签方案：在 target 下所有的 dts/dtsi 中补上空的/虚拟的 macaddr 标签，防止其他设备也报错
+find target/linux/qualcommax/ -type f \( -name "*.dts" -o -name "*.dtsi" \) | xargs sed -i 's/&macaddr_wan/&wan_mac/g' 2>/dev/null || true
+find target/linux/qualcommax/ -type f \( -name "*.dts" -o -name "*.dtsi" \) | xargs sed -i 's/&macaddr_lan/&lan_mac/g' 2>/dev/null || true
+
+echo "dts has been fixed!"
