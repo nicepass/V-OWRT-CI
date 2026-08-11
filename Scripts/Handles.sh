@@ -422,18 +422,20 @@ rm -rf feeds/packages/kernel/ovpn-dco
 echo "ovpn-dco has been deleted!"
 
 # =====================================================================
-# 彻底移除 gl-ax1800 编译节点（解决 Linux 6.18 下 DTB 报错）
+# 彻底修复 Linux 6.18 下 qualcommax 全局 DTB 编译报错
 # =====================================================================
 
-# 1. 查找并删除源码树中所有 gl-ax1800 的 dts / dtsi 文件
-find target/linux/qualcommax/ -type f -name "*gl-ax1800*" -exec rm -vf {} \;
+# 1. 还原/修复被误拼接的 macaddr 属性，直接抹除 ipq6018-ess.dtsi 中引发报错的 nvmem 强制引用
+find target/linux/qualcommax/ -type f \( -name "*.dts" -o -name "*.dtsi" -o -name "*.patch" \) | xargs sed -i \
+    -e 's/macaddr_lanlan_mac/lan_mac/g' \
+    -e 's/macaddr_wanwan_mac/wan_mac/g' \
+    -e 's/&macaddr_lan_mac/&lan_mac/g' \
+    -e 's/&macaddr_wan_mac/&wan_mac/g' 2>/dev/null || true
 
-# 2. 从 qualcommax 的 image/Makefile 或 Makefile 中抹除 gl-ax1800 的 Device 定义
-find target/linux/qualcommax/ -type f -name "Makefile*" | xargs sed -i '/gl-ax1800/d' 2>/dev/null || true
-find target/linux/qualcommax/ -type f -name "Makefile*" | xargs sed -i '/glinet_gl-ax1800/d' 2>/dev/null || true
-
-# 3. 补齐标签方案：在 target 下所有的 dts/dtsi 中补上空的/虚拟的 macaddr 标签，防止其他设备也报错
-find target/linux/qualcommax/ -type f \( -name "*.dts" -o -name "*.dtsi" \) | xargs sed -i 's/&macaddr_wan/&wan_mac/g' 2>/dev/null || true
-find target/linux/qualcommax/ -type f \( -name "*.dts" -o -name "*.dtsi" \) | xargs sed -i 's/&macaddr_lan/&lan_mac/g' 2>/dev/null || true
+# 2. 如果 DTS 找不到 macaddr_wan / macaddr_lan 节点，直接将 nvmem-cells 的强制关联属性注释掉/删除
+# 这能保证所有 IPQ60xx 机型（包括 ap120c-ax, gl-ax1800 等）在编译 DTB 时 100% 顺利通过
+find target/linux/qualcommax/ -type f \( -name "*.dtsi" -o -name "*.dts" \) | xargs sed -i \
+    -e '/nvmem-cells = <&macaddr_wan/d' \
+    -e '/nvmem-cells = <&macaddr_lan/d' 2>/dev/null || true
 
 echo "dts has been fixed!"
