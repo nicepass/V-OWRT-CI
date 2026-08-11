@@ -420,3 +420,14 @@ echo "qca-nss-ecm has been fixed!"
 # 删除冲突的 ovpn-dco 包
 rm -rf feeds/packages/kernel/ovpn-dco
 echo "ovpn-dco has been deleted!"
+
+# 修复 ipq6018-ess.dtsi 里的缺失标签依赖（防止其他机型也踩雷）
+ESS_DTSI=$(find target/linux/qualcommax/ -name "ipq6018-ess.dtsi" 2>/dev/null)
+if [ -n "$ESS_DTSI" ]; then
+    echo "正在清除 $ESS_DTSI 中未定义的 nvmem-cells 标签引用..."
+    sed -i '/nvmem-cells = <&macaddr_wan>/d' "$ESS_DTSI" 2>/dev/null || true
+    sed -i '/nvmem-cells = <&macaddr_lan>/d' "$ESS_DTSI" 2>/dev/null || true
+    sed -i '/nvmem-cell-names/d' "$ESS_DTSI" 2>/dev/null || true
+fi
+
+echo "ess has been fixed!"
