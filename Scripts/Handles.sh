@@ -369,29 +369,22 @@ rm -rf "$FEEDS_DIR/packages/kernel/ovpn-dco"
 # =================================================================
 # 6. 无线与 5G 模组驱动内核兼容修复 (MT76 / QMI WWAN / Qualcomm NSS)
 # =================================================================
-# A. 修复 MT76 无线驱动适配 Linux 6.18+ mac80211 API (X86 / MT7981 / MT7986)
-if [ -d "package/kernel/mt76" ]; then
-	echo "Injecting mac80211 FILS discovery patch for package/kernel/mt76..."
-	mkdir -p package/kernel/mt76/patches
-	cat << 'EOF' > package/kernel/mt76/patches/999-fix-mac80211-fils-discovery-api.patch
---- a/mt7915/mcu.c
-+++ b/mt7915/mcu.c
-@@ -2003,11 +2003,11 @@ int mt7915_mcu_add_inband_discov(struct
- 	int ret = 0;
+# A. 动态修复 MT76 无线驱动适配 Linux 6.18+ mac80211 API (解决静态补丁 Hunk Failed 冲突)
+for MT76_MK in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/kernel/mt76/Makefile" 2>/dev/null); do
+	if [ -f "$MT76_MK" ]; then
+		echo "Injecting dynamic Prepare hook into mt76 Makefile: $MT76_MK"
+		rm -f "$(dirname "$MT76_MK")/patches/999-fix-mac80211-fils-discovery-api.patch"
+		sed -i '/define Build\/Prepare/,/endef/d' "$MT76_MK"
+		cat << 'EOF' >> "$MT76_MK"
 
- 	if (vif->fils_discovery.tmpl_len) {
--		skb = ieee80211_get_fils_discovery_tmpl(hw, vif);
-+		skb = ieee80211_get_fils_discovery_tmpl(hw, vif, 0);
- 		if (skb)
- 			ret = mt7915_mcu_add_inband_tmpl(dev, vif, skb, true);
- 	} else if (vif->unsol_bcast_probe_resp.tmpl_len) {
--		skb = ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif);
-+		skb = ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif, 0);
- 		if (skb)
- 			ret = mt7915_mcu_add_inband_tmpl(dev, vif, skb, false);
- 	}
+define Build/Prepare
+	$(call Build/Prepare/Default)
+	find $(PKG_BUILD_DIR) -type f -name "*.c" -exec sed -i 's/ieee80211_get_fils_discovery_tmpl(hw, vif)/ieee80211_get_fils_discovery_tmpl(hw, vif, 0)/g' {} + 2>/dev/null || true
+	find $(PKG_BUILD_DIR) -type f -name "*.c" -exec sed -i 's/ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif)/ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif, 0)/g' {} + 2>/dev/null || true
+endef
 EOF
-fi
+	fi
+done
 
 # B. 批量修复 5G 模块驱动 (Fibocom / Quectel / SIMCom) 适配 Linux 6.6+ u64_stats API
 if [ -d "package" ]; then
