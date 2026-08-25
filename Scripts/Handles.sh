@@ -224,7 +224,7 @@ if [ -f "$DISKMAN_JSON" ]; then
 fi
 
 # =================================================================
-# 4. Tailscale & sing-box 编译与启动兼容修复
+# 4. Tailscale & sing-box 启动脚本与 Makefile 兼容配置
 # =================================================================
 echo "Applying Tailscale & sing-box compatibility fixes..."
 mkdir -p "$FILES_DIR/etc/config" "$FILES_DIR/etc/init.d" "$FILES_DIR/etc/rc.d" "$FILES_DIR/etc/uci-defaults"
@@ -295,26 +295,30 @@ EOF
 chmod +x "$FILES_DIR/etc/uci-defaults/99-force-tailscale"
 
 # 修复 Tailscale Makefile
-TS_FILES="$(find "$PKG_PATH" "$FEEDS_DIR" -maxdepth 4 -type f -wholename "*/tailscale/Makefile" 2>/dev/null)"
-for TS_FILE in $TS_FILES; do
+for TS_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/tailscale/Makefile" 2>/dev/null); do
 	if [ -f "$TS_FILE" ]; then
 		sed -i '/\/files/d' "$TS_FILE"
-		sed -i '/Build\/Prepare\/Default/a\\tsed -i -e "s/go 1.2[0-9].*/go 1.25/g" -e "/toolchain/d" $(PKG_BUILD_DIR)/go.mod' "$TS_FILE"
 	fi
 done
 
-# 修复 sing-box 在 Go 1.27 下对 http2.connPool 废弃私有符号链接失败的问题
-SB_FILES="$(find "$PKG_PATH" "$FEEDS_DIR" -maxdepth 4 -type f -wholename "*/sing-box/Makefile" 2>/dev/null)"
-for SB_FILE in $SB_FILES; do
+# 修复 sing-box Makefile，注入 Build/Prepare 钩子
+for SB_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/sing-box/Makefile" 2>/dev/null); do
 	if [ -f "$SB_FILE" ]; then
-		echo "Patching sing-box Makefile for Go 1.27 linkname compatibility ($SB_FILE)..."
-		sed -i '/Build\/Prepare\/Default/a\\tfind $(PKG_BUILD_DIR) -type f -name "*.go" -exec sed -i '\''/\\/\\/go:linkname.*connPool/d'\'' {} + 2>/dev/null || true' "$SB_FILE"
-		sed -i '/Build\/Prepare\/Default/a\\tfind $(PKG_BUILD_DIR) -type f -path "*\/v2rayhttp\/*" -name "*.go" -exec sed -i '\''/func ResetTransport/,/^}/c\\func ResetTransport(t *http2.Transport) {}'\'' {} + 2>/dev/null || true' "$SB_FILE"
+		echo "Injecting Build/Prepare hook into sing-box Makefile: $SB_FILE"
+		sed -i '/define Build\/Prepare/,/endef/d' "$SB_FILE"
+		cat << 'EOF' >> "$SB_FILE"
+
+define Build/Prepare
+	$(call Build/Prepare/Default)
+	find $(PKG_BUILD_DIR) -type f -name "*.go" -exec sed -i '/go:linkname.*connPool/d' {} + 2>/dev/null || true
+	find $(PKG_BUILD_DIR) -type f -name "*.go" -exec sed -i '/func ResetTransport/,/^}/c\func ResetTransport(t *http2.Transport) {}' {} + 2>/dev/null || true
+endef
+EOF
 	fi
 done
 
 # =================================================================
-# 5. 语言与编译器修复 (Rust & Upstream Golang)
+# 5. 语言与编译器修复 (Rust & Golang 工具链钩子)
 # =================================================================
 # 修复 Rust 编译
 RUST_FILE="$(find "$FEEDS_DIR/packages" -maxdepth 3 -type f -wholename '*/rust/Makefile' -print -quit 2>/dev/null)"
@@ -335,13 +339,29 @@ if [ -d "$FEEDS_DIR/packages/lang" ]; then
 	fi
 	rm -rf "$WRT_DIR/tmp/openwrt-packages-go"
 
-	# 解除 GOTOOLCHAIN=local 锁定，允许自动匹配工具链
 	find "$FEEDS_DIR/packages/lang/golang" -type f -exec sed -i 's/GOTOOLCHAIN=local/GOTOOLCHAIN=auto/g' {} + 2>/dev/null || true
 
 	if [ -x "$WRT_DIR/scripts/feeds" ]; then
 		"$WRT_DIR/scripts/feeds" install -a golang
 	fi
 fi
+
+# 向 golang-build.sh 注入通用编译前置拦截钩子
+for GBS in $(find "$WRT_DIR" -type f -name "golang-build.sh" 2>/dev/null); do
+	echo "Injecting universal source patch hook into: $GBS"
+	TMP_GBS="${GBS}.tmp"
+	head -n 1 "$GBS" > "$TMP_GBS"
+	cat << 'EOF' >> "$TMP_GBS"
+if [ -n "$BUILD_DIR" ] && [ -d "$BUILD_DIR" ]; then
+	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/go:linkname.*connPool/d' {} + 2>/dev/null || true
+	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/func ResetTransport/,/^}/c\func ResetTransport(t *http2.Transport) {}' {} + 2>/dev/null || true
+	[ -f "$BUILD_DIR/go.mod" ] && sed -i -e 's/go 1.2[0-9].*/go 1.25/g' -e '/toolchain/d' "$BUILD_DIR/go.mod" 2>/dev/null || true
+fi
+EOF
+	tail -n +2 "$GBS" >> "$TMP_GBS"
+	mv -f "$TMP_GBS" "$GBS"
+	chmod +x "$GBS"
+done
 
 # 删除冲突的 ovpn-dco 包
 rm -rf "$FEEDS_DIR/packages/kernel/ovpn-dco"
