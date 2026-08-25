@@ -224,9 +224,9 @@ if [ -f "$DISKMAN_JSON" ]; then
 fi
 
 # =================================================================
-# 4. Tailscale 深度自启、nftables 兼容注入与 Go 工具链兼容修复
+# 4. Tailscale & sing-box 编译与启动兼容修复
 # =================================================================
-echo "Applying Tailscale FORCE-START & Go compatibility fix..."
+echo "Applying Tailscale & sing-box compatibility fixes..."
 mkdir -p "$FILES_DIR/etc/config" "$FILES_DIR/etc/init.d" "$FILES_DIR/etc/rc.d" "$FILES_DIR/etc/uci-defaults"
 
 cat > "$FILES_DIR/etc/config/tailscale" << 'EOF'
@@ -294,17 +294,27 @@ exit 0
 EOF
 chmod +x "$FILES_DIR/etc/uci-defaults/99-force-tailscale"
 
-# 清理 feeds 中原生启动脚本，防止覆盖
-TS_FILE="$(find "$FEEDS_DIR/packages/" -maxdepth 3 -type f -wholename "*/tailscale/Makefile" -print -quit 2>/dev/null)"
-if [ -f "$TS_FILE" ]; then
-	sed -i '/\/files/d' "$TS_FILE"
-	# 修复 Tailscale 声明高版本 Go (>= 1.26) 导致的编译中断
-	sed -i '/Build\/Prepare\/Default/a\\tsed -i -e "s/go 1.2[0-9].*/go 1.25/g" -e "/toolchain/d" $(PKG_BUILD_DIR)/go.mod' "$TS_FILE"
-fi
-echo "Tailscale FORCE-START fix applied successfully!"
+# 修复 Tailscale Makefile
+TS_FILES="$(find "$PKG_PATH" "$FEEDS_DIR" -maxdepth 4 -type f -wholename "*/tailscale/Makefile" 2>/dev/null)"
+for TS_FILE in $TS_FILES; do
+	if [ -f "$TS_FILE" ]; then
+		sed -i '/\/files/d' "$TS_FILE"
+		sed -i '/Build\/Prepare\/Default/a\\tsed -i -e "s/go 1.2[0-9].*/go 1.25/g" -e "/toolchain/d" $(PKG_BUILD_DIR)/go.mod' "$TS_FILE"
+	fi
+done
+
+# 修复 sing-box 在 Go 1.27 下对 http2.connPool 废弃私有符号链接失败的问题
+SB_FILES="$(find "$PKG_PATH" "$FEEDS_DIR" -maxdepth 4 -type f -wholename "*/sing-box/Makefile" 2>/dev/null)"
+for SB_FILE in $SB_FILES; do
+	if [ -f "$SB_FILE" ]; then
+		echo "Patching sing-box Makefile for Go 1.27 linkname compatibility ($SB_FILE)..."
+		sed -i '/Build\/Prepare\/Default/a\\tfind $(PKG_BUILD_DIR) -type f -name "*.go" -exec sed -i '\''/\\/\\/go:linkname.*connPool/d'\'' {} + 2>/dev/null || true' "$SB_FILE"
+		sed -i '/Build\/Prepare\/Default/a\\tfind $(PKG_BUILD_DIR) -type f -path "*\/v2rayhttp\/*" -name "*.go" -exec sed -i '\''/func ResetTransport/,/^}/c\\func ResetTransport(t *http2.Transport) {}'\'' {} + 2>/dev/null || true' "$SB_FILE"
+	fi
+done
 
 # =================================================================
-# 5. 语言与编译器修复 (Rust & Upstream Golang 1.24+)
+# 5. 语言与编译器修复 (Rust & Upstream Golang)
 # =================================================================
 # 修复 Rust 编译
 RUST_FILE="$(find "$FEEDS_DIR/packages" -maxdepth 3 -type f -wholename '*/rust/Makefile' -print -quit 2>/dev/null)"
