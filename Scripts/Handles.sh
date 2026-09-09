@@ -35,7 +35,7 @@ TARGET_DIR="$WRT_DIR/target"
 # =================================================================
 # 2. 预置 HomeProxy 规则与 Dashboard 数据
 # =================================================================
-HP_DIR="$(find "$PKG_PATH" -maxdepth 2 -type d -name '*homeproxy*' -print -quit 2>/dev/null)"
+HP_DIR="$(find "$PKG_PATH" -maxdepth 3 -type d -iname '*homeproxy*' -print -quit 2>/dev/null)"
 if [ -n "$HP_DIR" ]; then
 	echo " "
 	echo "Processing HomeProxy resource presets..."
@@ -197,9 +197,18 @@ if [ -n "$HP_DIR" ]; then
 			echo "failed to update homeproxy geosite; continuing!"
 			HP_PRESET_FAILED=1
 		fi
-		hp_update_dashboard || echo "failed to update homeproxy dashboard; continuing!"
+		if ! hp_update_dashboard; then
+			echo "failed to update homeproxy dashboard; continuing!"
+			HP_PRESET_FAILED=1
+		fi
 		rm -rf "$HP_TMP" "$HP_DASHBOARD_STAGE"
 		trap - EXIT INT TERM
+	fi
+
+	if [ "$HP_PRESET_FAILED" -eq 0 ]; then
+		echo "homeproxy data has been updated!"
+	else
+		echo "homeproxy resource preset completed with errors; continuing!"
 	fi
 fi
 
