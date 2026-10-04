@@ -14,8 +14,8 @@ on:
         required: true
         type: choice
         options:
-          - AIROHA-WIFI-NO
-          - IPQ53XX-WIFI-NO
+          - AIROHA
+          - IPQ53XX
           - IPQ60XX-WIFI-YES
           - IPQ60XX-WIFI-YES-CPE
           - IPQ60XX-WIFI-NO
@@ -25,7 +25,7 @@ on:
           - IPQ60XX-WIFI-YES-DAED
           - IPQ807X-WIFI-NO
           - IPQ807X-WIFI-YES
-          - IPQ95XX-WIFI-YES
+          - IPQ95XX
           - MEDIATEK-WIFI-NO
           - MEDIATEK-WIFI-YES
           - MTK-CPE
