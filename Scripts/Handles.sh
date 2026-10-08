@@ -206,7 +206,7 @@ fi
 # 修改 argon 主题字体和颜色
 ARGON_CONF="$(find "$PKG_PATH" -type f -path "*/luci-app-argon-config/root/etc/config/argon" -print -quit 2>/dev/null)"
 if [ -f "$ARGON_CONF" ]; then
-	sed -i "s/primary '.*'/primary '#31a1a1'/; s/'0.2'/'0.5'/; s/'none'/'bing'/; s/'600'/'normal'/" "$ARGON_CONF" && \
+	sed -i "s/primary '.*'/primary '#31a1a1'/g; s/'0.2'/'0.5'/g; s/'none'/'bing'/g; s/'600'/'normal'/g" "$ARGON_CONF" && \
 		echo "theme-argon has been customized!"
 fi
 
@@ -221,6 +221,12 @@ fi
 DISKMAN_JSON="$(find "$PKG_PATH" -type f -name "luci-app-mini-diskmanager.json" -print -quit 2>/dev/null)"
 if [ -f "$DISKMAN_JSON" ]; then
 	sed -i "s/services/system/g" "$DISKMAN_JSON" && echo "mini-diskmanager has been moved to System menu!"
+fi
+
+# 修改 natmapt 菜单位置
+NATMAP_JSON="$(find "$PKG_PATH" -type f -name "luci-app-natmap.json" -print -quit 2>/dev/null)"
+if [ -f "$NATMAP_JSON" ]; then
+	sed -i "s/network/services/g" "$NATMAP_JSON" && echo "natmapt has been moved to Services menu!"
 fi
 
 # =================================================================
