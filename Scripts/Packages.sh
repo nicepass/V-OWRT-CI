@@ -67,11 +67,6 @@ UPDATE_PACKAGE "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
 UPDATE_PACKAGE "luci-app-tailscale-community" "Tokisaki-Galaxy/luci-app-tailscale-community" "master"
 UPDATE_PACKAGE "rtp2httpd" "stackia/rtp2httpd" "main"
 
-#NAT 端口映射与 STUN 辅助
-UPDATE_PACKAGE "natmapt" "muink/openwrt-natmapt" "master"
-UPDATE_PACKAGE "luci-app-natmapt" "muink/luci-app-natmapt" "master"
-UPDATE_PACKAGE "stuntman" "muink/openwrt-stuntman" "master"
-
 #5G/CPE 模组与硬件监控（LianXia233 系列）
 UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
 UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"

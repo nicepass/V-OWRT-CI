@@ -223,12 +223,6 @@ if [ -f "$DISKMAN_JSON" ]; then
 	sed -i "s/services/system/g" "$DISKMAN_JSON" && echo "mini-diskmanager has been moved to System menu!"
 fi
 
-# 修改 natmapt 菜单位置
-NATMAP_JSON="$(find "$PKG_PATH" -type f -name "luci-app-natmap.json" -print -quit 2>/dev/null)"
-if [ -f "$NATMAP_JSON" ]; then
-	sed -i "s/network/services/g" "$NATMAP_JSON" && echo "natmapt has been moved to Services menu!"
-fi
-
 # =================================================================
 # 4. Tailscale & sing-box 启动脚本与 Makefile 兼容配置
 # =================================================================
