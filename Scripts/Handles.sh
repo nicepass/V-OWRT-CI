@@ -307,15 +307,40 @@ for TS_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/tailscale/Makefi
 	fi
 done
 
-# 修复 luci-app-tailscale-community: lastDevicesStatus 未声明
-# 上游 748a6af 引入过滤功能时漏了变量声明，过滤框输入会抛 ReferenceError
+# 修复 luci-app-tailscale-community 的未声明变量
+# 上游 748a6af 重构设备表格时误删了两个声明，导致前端抛 ReferenceError：
+#   - lastDevicesStatus: 过滤框输入时触发
+#   - peerTableHeaders:  渲染设备表格表头时触发
 for TS_VIEW in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/resources/view/tailscale.js" 2>/dev/null); do
-	if [ -f "$TS_VIEW" ] && ! grep -q 'let lastDevicesStatus' "$TS_VIEW"; then
+	[ -f "$TS_VIEW" ] || continue
+
+	# 1) lastDevicesStatus：在 "let map;" 后注入声明
+	if ! grep -q 'let lastDevicesStatus' "$TS_VIEW"; then
 		if grep -q '^let map;' "$TS_VIEW"; then
 			sed -i 's/^let map;/let map;\nlet lastDevicesStatus = null;/' "$TS_VIEW" && \
-				echo "tailscale.js lastDevicesStatus declaration has been injected!"
+				echo "tailscale.js: lastDevicesStatus declaration injected!"
 		else
-			echo "warning: could not locate injection point in $TS_VIEW; skipping"
+			echo "warning: tailscale.js: lastDevicesStatus injection point not found; skipping"
+		fi
+	fi
+
+	# 2) peerTableHeaders：在 "let map;" 后注入完整表头定义（8 列，与 renderPeerRows 对齐）
+	if ! grep -q 'const peerTableHeaders' "$TS_VIEW"; then
+		if grep -q '^let map;' "$TS_VIEW"; then
+			sed -i '/^let map;/a\
+const peerTableHeaders = [\
+	{ text: _('"'"'Status'"'"'), style: '"'"'width: 80px;'"'"' },\
+	{ text: _('"'"'Hostname'"'"') },\
+	{ text: _('"'"'Tailscale IP'"'"') },\
+	{ text: _('"'"'OS'"'"') },\
+	{ text: _('"'"'Connection Info'"'"') },\
+	{ text: _('"'"'RX'"'"') },\
+	{ text: _('"'"'TX'"'"') },\
+	{ text: _('"'"'Last Seen'"'"') }\
+];' "$TS_VIEW" && \
+				echo "tailscale.js: peerTableHeaders declaration injected!"
+		else
+			echo "warning: tailscale.js: peerTableHeaders injection point not found; skipping"
 		fi
 	fi
 done
