@@ -307,6 +307,19 @@ for TS_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/tailscale/Makefi
 	fi
 done
 
+# 修复 luci-app-tailscale-community: lastDevicesStatus 未声明
+# 上游 748a6af 引入过滤功能时漏了变量声明，过滤框输入会抛 ReferenceError
+for TS_VIEW in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/resources/view/tailscale.js" 2>/dev/null); do
+	if [ -f "$TS_VIEW" ] && ! grep -q 'let lastDevicesStatus' "$TS_VIEW"; then
+		if grep -q '^let map;' "$TS_VIEW"; then
+			sed -i 's/^let map;/let map;\nlet lastDevicesStatus = null;/' "$TS_VIEW" && \
+				echo "tailscale.js lastDevicesStatus declaration has been injected!"
+		else
+			echo "warning: could not locate injection point in $TS_VIEW; skipping"
+		fi
+	fi
+done
+
 # 修复 sing-box Makefile，注入 Build/Prepare 钩子
 for SB_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/sing-box/Makefile" 2>/dev/null); do
 	if [ -f "$SB_FILE" ]; then
