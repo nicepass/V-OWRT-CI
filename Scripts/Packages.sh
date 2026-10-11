@@ -35,8 +35,29 @@ UPDATE_PACKAGE() {
 
 	# 处理克隆的仓库
 	if [[ "$PKG_SPECIAL" == "pkg" ]]; then
-		find ./$REPO_NAME/*/ -maxdepth 3 -type d -iname "*$PKG_NAME*" -prune -exec cp -rf {} ./ \;
-		rm -rf ./$REPO_NAME/
+		# 用 mv 而非 cp：当外层目录名与内层包目录同名时（如
+		# luci-app-qmodem-generic/luci-app-qmodem-generic/），cp -rf 会
+		# 把内容复制进已存在的同名外层目录（自我嵌套），随后 rm -rf 外层
+		# 会把刚复制的内容一并删除，导致包丢失。
+		# 先把匹配项全部移到临时区，再清理仓库，最后统一归位，
+		# 这样多个匹配目录（如 OpenClash 同时含 luci-app-openclash 和
+		# openclash）都不会因中途 rm -rf 而丢失。
+		PKG_MATCHES=$(find ./$REPO_NAME/*/ -maxdepth 3 -type d -iname "*$PKG_NAME*" 2>/dev/null)
+		if [ -n "$PKG_MATCHES" ]; then
+			mkdir -p "./_pkg_extract_$$"
+			for PKG_DIR in $PKG_MATCHES; do
+				mv "$PKG_DIR" "./_pkg_extract_$$/" 2>/dev/null
+			done
+			rm -rf "./$REPO_NAME"
+			for PKG_TMP in "./_pkg_extract_$$"/*; do
+				[ -e "$PKG_TMP" ] || continue
+				mv "$PKG_TMP" "./$(basename "$PKG_TMP")"
+				echo "Extracted package: $(basename "$PKG_TMP")"
+			done
+			rm -rf "./_pkg_extract_$$"
+		else
+			rm -rf "./$REPO_NAME"
+		fi
 	elif [[ "$PKG_SPECIAL" == "name" ]]; then
 		mv -f $REPO_NAME $PKG_NAME
 	fi
