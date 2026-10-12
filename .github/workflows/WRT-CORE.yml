@@ -194,6 +194,29 @@ jobs:
             done
           fi
 
+          # 修正上游 QModem 主包的幽灵依赖。
+          # kconfig 在解析包可见性时会检查 DEPENDS 中所有条目，只要有一条
+          # 指向不存在的包，整个包 symbol 就不可见 → 不出现在 .config。
+          # 即使该依赖挂在未选中的 choice 选项下也一样（已知 kconfig 行为）。
+          #
+          # 两个不存在的包：
+          #   kmod-mhi-wwan  → immortalwrt 内核只有 kmod-mhi-wwan-ctrl /
+          #                    kmod-mhi-wwan-mbim，没有无后缀的 kmod-mhi-wwan
+          #   quectel-CM-5G  → QModem feed 只有 quectel-CM-5G-M，无 -5G 版本
+          #                    （且仅 QWRT 固件才提供）
+          # 二者的触发选项(GENERIC_MHI_PCIe_DRIVER / USING_QWRT_QUECTEL_CM_5G)
+          # 均非本固件所选用，删除这些依赖条目不影响实际功能。
+          #
+          # 证据：删除前 .config 中 qmodem / luci-app-qmodem-next 完全缺失
+          # （连 "is not set" 都没有），而 luci-app-qmodem-ttlfw4 正常出现。
+          QMODEM_MK="feeds/qmodem/application/qmodem/Makefile"
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]] && [ -f "$QMODEM_MK" ]; then
+            if grep -q ':kmod-mhi-wwan \\' "$QMODEM_MK" || grep -q ':quectel-CM-5G \\' "$QMODEM_MK"; then
+              sed -i '/:kmod-mhi-wwan \\/d; /:quectel-CM-5G \\/d' "$QMODEM_MK"
+              echo "QModem: removed ghost deps (kmod-mhi-wwan, quectel-CM-5G)"
+            fi
+          fi
+
           # 关键：feeds update 已在重命名之前生成了 feeds/qmodem.index，
           # 而 feeds install 读的是索引文件。必须重建索引，否则 install
           # 仍按旧目录名注册，依赖引用依旧落空。
@@ -202,7 +225,13 @@ jobs:
             ./scripts/feeds update -i
           fi
 
-          ./scripts/feeds install -a
+          # -p qmodem: 同名包存在多个 feed 时优先用 qmodem 的版本
+          # （官方文档推荐：feeds install -a -p qmodem）
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then
+            ./scripts/feeds install -a -p qmodem
+          else
+            ./scripts/feeds install -a
+          fi
 
       - name: Custom Packages
         run: |
