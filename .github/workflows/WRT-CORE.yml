@@ -217,6 +217,20 @@ jobs:
             fi
           fi
 
+          # usbutils 保险：Config 已启用 input-support→libevdev→libudev-zero
+          # →usbutils 整条链（B 方案）。若该链在本次构建仍不可用，
+          # qmodem 会因 DEPENDS 含 +usbutils 继续被 kconfig 隐藏。
+          # 此处做条件兜底：仅当 usbutils 未出现在 feeds 索引/配置中时才
+          # 从 qmodem 主包依赖里摘掉它（丢失 lsusb，不影响 QModem 主体）。
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]] && [ -f "$QMODEM_MK" ]; then
+            if grep -q '^CONFIG_PACKAGE_usbutils=y' "$GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt" 2>/dev/null; then
+              echo "QModem: usbutils enabled in Config, keeping +usbutils (lsusb available)"
+            elif grep -q '+usbutils ' "$QMODEM_MK"; then
+              sed -i 's/+usbutils //' "$QMODEM_MK"
+              echo "QModem: usbutils not enabled -> removed +usbutils (lsusb lost)"
+            fi
+          fi
+
           # 关键：feeds update 已在重命名之前生成了 feeds/qmodem.index，
           # 而 feeds install 读的是索引文件。必须重建索引，否则 install
           # 仍按旧目录名注册，依赖引用依旧落空。
