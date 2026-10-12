@@ -194,6 +194,14 @@ jobs:
             done
           fi
 
+          # 关键：feeds update 已在重命名之前生成了 feeds/qmodem.index，
+          # 而 feeds install 读的是索引文件。必须重建索引，否则 install
+          # 仍按旧目录名注册，依赖引用依旧落空。
+          # update -i = Recreate the index only（不重新拉取仓库）
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then
+            ./scripts/feeds update -i
+          fi
+
           ./scripts/feeds install -a
 
       - name: Custom Packages
