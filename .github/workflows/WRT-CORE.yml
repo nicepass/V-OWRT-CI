@@ -177,6 +177,23 @@ jobs:
           fi
 
           ./scripts/feeds update -a
+
+          # 修正上游 QModem feed 的目录名 / PKG_NAME 不一致问题。
+          # feeds 用【目录名】注册包，但 qmodem 主包的 DEPENDS 用【PKG_NAME】引用：
+          #   application/qmodem_settings  → PKG_NAME: qmodem-settings
+          #   application/quectel_CM_5G_M  → PKG_NAME: quectel-CM-5G-M
+          # 其中 qmodem-settings 是无条件必选依赖(+qmodem-settings)，不修正
+          # 则 qmodem 主包依赖永远无法满足，连带 luci-app-qmodem-next 被丢弃。
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]] && [ -d feeds/qmodem/application ]; then
+            for pair in "qmodem_settings:qmodem-settings" "quectel_CM_5G_M:quectel-CM-5G-M"; do
+              old="${pair%%:*}"; new="${pair##*:}"
+              if [ -d "feeds/qmodem/application/$old" ]; then
+                mv "feeds/qmodem/application/$old" "feeds/qmodem/application/$new"
+                echo "QModem feed: renamed $old -> $new"
+              fi
+            done
+          fi
+
           ./scripts/feeds install -a
 
       - name: Custom Packages
