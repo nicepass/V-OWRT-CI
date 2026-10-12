@@ -229,6 +229,18 @@ fi
 echo "Applying Tailscale & sing-box compatibility fixes..."
 mkdir -p "$FILES_DIR/etc/config" "$FILES_DIR/etc/init.d" "$FILES_DIR/etc/rc.d" "$FILES_DIR/etc/uci-defaults"
 
+# =================================================================
+# BBR 官方推荐组合: fq 队列调度 + bbr 拥塞控制
+# =================================================================
+# bbr 部分由 kmod-tcp-bbr 包自动完成（自带 /etc/sysctl.d/12-tcp-bbr.conf
+# 且 AUTOLOAD 自动加载 tcp_bbr 模块），此处仅补 fq 队列调度。
+# fq 由 kmod-sched 包提供的 sch_fq.ko 实现，需在 GENERAL.txt 中启用
+# CONFIG_PACKAGE_kmod-sched=y。
+# 文件名用 99- 前缀，确保在 sysctl.d 中按字典序最后加载，避免被覆盖。
+mkdir -p "$FILES_DIR/etc/sysctl.d"
+echo "net.core.default_qdisc=fq" > "$FILES_DIR/etc/sysctl.d/99-default-qdisc.conf"
+echo "fq qdisc (BBR recommended) preset applied!"
+
 cat > "$FILES_DIR/etc/config/tailscale" << 'EOF'
 config tailscale 'main'
 	option enabled '1'
