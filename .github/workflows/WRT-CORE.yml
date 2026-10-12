@@ -164,6 +164,18 @@ jobs:
         run: |
           cd ./wrt/
 
+          # QModem 是 OpenWrt Feed（多包结构：application/ driver/ luci/），
+          # 必须经 feeds 机制安装 —— 直接 git clone 到 package/ 会使
+          # package/QModem/ 下的包全部无法被扫描。
+          # 仅对 CPE 目标注入，避免影响其他固件目标。
+          # 参考: https://github.com/FUjr/QModem/blob/main/docs/user/installation.zh-cn.md
+          if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then
+            if ! grep -q 'FUjr/QModem' feeds.conf.default 2>/dev/null; then
+              echo "src-git qmodem https://github.com/FUjr/QModem.git;main" >> feeds.conf.default
+              echo "QModem feed has been added to feeds.conf.default!"
+            fi
+          fi
+
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
