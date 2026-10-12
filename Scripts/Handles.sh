@@ -412,28 +412,31 @@ if [ -d "$FEEDS_DIR/packages/lang" ]; then
 	fi
 fi
 
-# 向 golang-build.sh 注入通用编译前置拦截钩子
-# 注意：必须用 find -L 跟随符号链接。
-# CI 中 $GITHUB_WORKSPACE/wrt 是指向 /mnt/build_wrt 的符号链接
-# (WRT-CORE.yml: sudo ln -s /mnt/build_wrt $GITHUB_WORKSPACE/wrt)，
-# 而 GNU find 默认不递归进入符号链接起始路径，导致此处长期返回空、
-# 整个循环从未执行（编译日志中零次 "universal source patch hook" 输出）。
+# golang-build.sh 通用编译前置钩子 —— 已禁用
+#
+# 历史：该钩子向 golang-build.sh 注入两行 sed，用于旧版 sing-box 的 workaround
+#   a) 删除含 go:linkname.*connPool 的行
+#   b) 把 func ResetTransport 的函数体替换为空实现
+# 以及一行破坏性的 go.mod 改写（已在 880583a 移除）。
+#
+# 为何禁用（实测证据链）：
+#   - 该钩子长期从未执行：CI 中 $GITHUB_WORKSPACE/wrt 是指向 /mnt/build_wrt 的
+#     符号链接，GNU find 默认不递归进入符号链接起始路径，故 find 返回空。
+#   - aecc371 为修此问题加了 find -L，钩子首次真正生效。随即连续两轮全量编译失败：
+#       b5dde04: go.mod 被强行写成 go 1.25 + 删除 toolchain 行
+#                -> "go: updates to go.mod needed" / "no Go files in .../.go_work/build"
+#       880583a: 移除 go.mod 改写后，剩余 ResetTransport 补丁再次破坏源码
+#                -> transport/v2rayhttp/force_close_legacy.go:30:6: missing function body
+#                （sing-box 1.15.0-alpha.12 以 http2legacy tag 编译该文件，
+#                 新版把 ResetTransport 拆分到独立文件，旧的 sed 区间匹配错位，
+#                 留下签名删掉函数体）
+#   - 反过来看：钩子不生效的那些周里 sing-box 一直编译正常，说明当前版本
+#     不需要这些 workaround，上游早已自行处理。
+#
+# 结论：整体禁用注入。保留 find -L 与循环骨架，便于日后确需时按新版本重写。
 for GBS in $(find -L "$WRT_DIR" -type f -name "golang-build.sh" 2>/dev/null); do
-	echo "Injecting universal source patch hook into: $GBS"
-	TMP_GBS="${GBS}.tmp"
-	head -n 1 "$GBS" > "$TMP_GBS"
-	cat << 'EOF' >> "$TMP_GBS"
-if [ -n "$BUILD_DIR" ] && [ -d "$BUILD_DIR" ]; then
-	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/go:linkname.*connPool/d' {} + 2>/dev/null || true
-	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/func ResetTransport/,/^}/c\func ResetTransport(t *http2.Transport) {}' {} + 2>/dev/null || true
-	# NOTE: original line forced go.mod to go 1.25 and deleted the toolchain line;
-	# destructive: sing-box needs go 1.25.5, truncation breaks the build (yq+sing-box fail 5/5).
-	# Hook never ran before (find did not follow the wrt symlink); aecc371 find -L activated it. Removed.
-fi
-EOF
-	tail -n +2 "$GBS" >> "$TMP_GBS"
-	mv -f "$TMP_GBS" "$GBS"
-	chmod +x "$GBS"
+	echo "golang-build.sh hook disabled, skipping (upstream workarounds obsolete): $GBS"
+	continue
 done
 
 # 删除冲突的 ovpn-dco 包
