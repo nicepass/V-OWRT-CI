@@ -426,7 +426,9 @@ for GBS in $(find -L "$WRT_DIR" -type f -name "golang-build.sh" 2>/dev/null); do
 if [ -n "$BUILD_DIR" ] && [ -d "$BUILD_DIR" ]; then
 	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/go:linkname.*connPool/d' {} + 2>/dev/null || true
 	find "$BUILD_DIR" -type f -name "*.go" -exec sed -i '/func ResetTransport/,/^}/c\func ResetTransport(t *http2.Transport) {}' {} + 2>/dev/null || true
-	[ -f "$BUILD_DIR/go.mod" ] && sed -i -e 's/go 1.2[0-9].*/go 1.25/g' -e '/toolchain/d' "$BUILD_DIR/go.mod" 2>/dev/null || true
+	# NOTE: original line forced go.mod to go 1.25 and deleted the toolchain line;
+	# destructive: sing-box needs go 1.25.5, truncation breaks the build (yq+sing-box fail 5/5).
+	# Hook never ran before (find did not follow the wrt symlink); aecc371 find -L activated it. Removed.
 fi
 EOF
 	tail -n +2 "$GBS" >> "$TMP_GBS"
