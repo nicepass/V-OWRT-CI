@@ -307,9 +307,19 @@ EOF
 chmod +x "$FILES_DIR/etc/uci-defaults/99-force-tailscale"
 
 # 修复 Tailscale Makefile
+# 上游 install 段会装 ./files//tailscale.init 与 ./files//tailscale.conf
+# （注意双斜杠），而本脚本下方已自行生成 /etc/init.d/tailscale 与
+# /etc/config/tailscale，两者会冲突。此处删除上游那两行，让自定义版本生效。
+# 日志会打印实际命中与否，避免静默空转：
+#   "patched"    = 找到并删除了上游行
+#   "already ok" = 上游已无该行（幂等，可能上游已改）
 for TS_FILE in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/tailscale/Makefile" 2>/dev/null); do
-	if [ -f "$TS_FILE" ]; then
+	[ -f "$TS_FILE" ] || continue
+	if grep -q '/files' "$TS_FILE"; then
 		sed -i '/\/files/d' "$TS_FILE"
+		echo "tailscale Makefile patched (removed upstream ./files install lines): $TS_FILE"
+	else
+		echo "tailscale Makefile already ok (no ./files lines): $TS_FILE"
 	fi
 done
 
@@ -321,13 +331,17 @@ for TS_VIEW in $(find "$PKG_PATH" "$FEEDS_DIR" -type f -path "*/resources/view/t
 	[ -f "$TS_VIEW" ] || continue
 
 	# 1) lastDevicesStatus：在 "let map;" 后注入声明
+	# 上游 d9a3954 已补回该声明，正常情况下此处为幂等跳过；
+	# 跳过时也打印日志，以免与"从未执行"混淆。
 	if ! grep -q 'let lastDevicesStatus' "$TS_VIEW"; then
 		if grep -q '^let map;' "$TS_VIEW"; then
 			sed -i 's/^let map;/let map;\nlet lastDevicesStatus = null;/' "$TS_VIEW" && \
-				echo "tailscale.js: lastDevicesStatus declaration injected!"
+				echo "tailscale.js: lastDevicesStatus declaration injected! ($TS_VIEW)"
 		else
-			echo "warning: tailscale.js: lastDevicesStatus injection point not found; skipping"
+			echo "warning: tailscale.js: lastDevicesStatus injection point not found; skipping ($TS_VIEW)"
 		fi
+	else
+		echo "tailscale.js: lastDevicesStatus already present, skip (upstream ok): $TS_VIEW"
 	fi
 
 	# 2) peerTableHeaders：在 "let map;" 后注入完整表头定义（8 列，与 renderPeerRows 对齐）
@@ -344,10 +358,12 @@ const peerTableHeaders = [\
 	{ text: _('"'"'TX'"'"') },\
 	{ text: _('"'"'Last Seen'"'"') }\
 ];' "$TS_VIEW" && \
-				echo "tailscale.js: peerTableHeaders declaration injected!"
+				echo "tailscale.js: peerTableHeaders declaration injected! ($TS_VIEW)"
 		else
-			echo "warning: tailscale.js: peerTableHeaders injection point not found; skipping"
+			echo "warning: tailscale.js: peerTableHeaders injection point not found; skipping ($TS_VIEW)"
 		fi
+	else
+		echo "tailscale.js: peerTableHeaders already present, skip (upstream ok): $TS_VIEW"
 	fi
 done
 
