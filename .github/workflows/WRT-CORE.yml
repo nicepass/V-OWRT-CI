@@ -239,6 +239,23 @@ jobs:
             ./scripts/feeds update -i
           fi
 
+          # 删除与 core 包同名的 ovpn-dco feed 副本。
+          # 必须放在 feeds update 之后、feeds install 之前：
+          # feeds update 会立即生成 feeds/packages.index，而 install 与
+          # defconfig 读的是索引。此前该删除写在 Handles.sh（Custom Packages
+          # 步骤，晚于 feeds update），索引里仍留有 ovpn-dco 条目，实测
+          # defconfig 依旧报 4 次
+          # "WARNING: Not overriding core package 'ovpn-dco'; use -f to force"。
+          if [ -d feeds/packages/kernel/ovpn-dco ]; then
+            rm -rf feeds/packages/kernel/ovpn-dco
+            echo "Removed conflicting ovpn-dco from packages feed."
+            FEEDS_INDEX_DIRTY=1
+          fi
+          if [ -n "$FEEDS_INDEX_DIRTY" ]; then
+            ./scripts/feeds update -i
+            echo "Feed index rebuilt after ovpn-dco removal."
+          fi
+
           # -p qmodem: 同名包存在多个 feed 时优先用 qmodem 的版本
           # （官方文档推荐：feeds install -a -p qmodem）
           if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then

@@ -397,7 +397,12 @@ if [ -d "$FEEDS_DIR/packages/lang" ]; then
 fi
 
 # 向 golang-build.sh 注入通用编译前置拦截钩子
-for GBS in $(find "$WRT_DIR" -type f -name "golang-build.sh" 2>/dev/null); do
+# 注意：必须用 find -L 跟随符号链接。
+# CI 中 $GITHUB_WORKSPACE/wrt 是指向 /mnt/build_wrt 的符号链接
+# (WRT-CORE.yml: sudo ln -s /mnt/build_wrt $GITHUB_WORKSPACE/wrt)，
+# 而 GNU find 默认不递归进入符号链接起始路径，导致此处长期返回空、
+# 整个循环从未执行（编译日志中零次 "universal source patch hook" 输出）。
+for GBS in $(find -L "$WRT_DIR" -type f -name "golang-build.sh" 2>/dev/null); do
 	echo "Injecting universal source patch hook into: $GBS"
 	TMP_GBS="${GBS}.tmp"
 	head -n 1 "$GBS" > "$TMP_GBS"
@@ -414,7 +419,15 @@ EOF
 done
 
 # 删除冲突的 ovpn-dco 包
-rm -rf "$FEEDS_DIR/packages/kernel/ovpn-dco"
+# 注：此处删除已移至 WRT-CORE.yml 的 Update Feeds 步骤（feeds update 之后、
+# feeds install 之前）并在删除后重建索引。原因：feeds update 会立即生成
+# feeds/packages.index，而 feeds install / defconfig 读的是索引文件；
+# 在 Handles.sh（Custom Packages 步骤，晚于 feeds update）里 rm 目录，
+# 索引里仍保留 ovpn-dco 条目，故 defconfig 依旧报
+# "WARNING: Not overriding core package 'ovpn-dco'; use -f to force"（实测 4 次）。
+if [ -d "$FEEDS_DIR/packages/kernel/ovpn-dco" ]; then
+	echo "warning: ovpn-dco still present in feed; removal should happen in Update Feeds step"
+fi
 
 # =================================================================
 # 6. 无线与 5G 模组驱动内核兼容修复 (MT76 / QMI WWAN / Qualcomm NSS)
