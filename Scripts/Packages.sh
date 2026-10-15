@@ -159,8 +159,23 @@ UPDATE_VERSION() {
 }
 
 #UPDATE_VERSION "软件包名" "测试版，true，可选，默认为否"
-UPDATE_VERSION "sing-box"
-UPDATE_VERSION "tailscale"
+# sing-box 与 tailscale 均不再由本脚本更新版本，改由上游 VIKINGYFY/packages
+# 的 Makefile 决定（与 main 分支保持一致）。
+#
+# 取消 sing-box 版本更新的原因：
+#   1. 上游 luci-app-homeproxy 自 20261008 起硬依赖 sing-box >= 1.15.0_alpha10，
+#      homeproxy 的重构依赖 1.15 的新特性（multi_queue / 新 TUN 协议栈 /
+#      auto_redirect 新 mark 体系）。改成正式版 1.14.x 会导致依赖不满足、
+#      homeproxy 被 kconfig 隐藏；上游作者亦明确表示不会为旧版本做兼容
+#      （见 VIKINGYFY/OpenWrt-CI#416）。
+#   2. 本函数对该包本来就无效：上游 PKG_VERSION 形如 1.15.0_alpha12，
+#      '_' 不是合法 dpkg 版本字符，dpkg --compare-versions 报
+#      "bad syntax" 并返回非 0，判定结果永远是 "already the latest"，
+#      sed 从不执行。且函数只改 PKG_VERSION/PKG_HASH，不改决定下载地址的
+#      PKG_UPSTREAM_VERSION，即使生效也会造成版本号与源码错配。
+#   3. 由上游决定版本即可保证 homeproxy 与 sing-box 始终配套。
+#UPDATE_VERSION "sing-box"
+#UPDATE_VERSION "tailscale"
 
 #引入私有扩展脚本
 if [ -f "$GITHUB_WORKSPACE/Scripts/PRIVATE.sh" ]; then
