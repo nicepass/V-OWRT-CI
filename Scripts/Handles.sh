@@ -277,14 +277,36 @@ start_service() {
 
     $PROGD --cleanup
     procd_open_instance
-    procd_set_param command $PROGD \
+    # 【关键 1】用 `env` 命令在命令行前缀注入环境变量，而不是依赖 procd 的 env。
+    # 原因：procd 的 `procd_set_param env` 是「设置整个 env 列表」而非追加
+    # （procd.sh 的 _procd_add_table 每次都 json_add_object 一个同名 object，
+    #  procd 解析时后者覆盖前者）。曾在同一 instance 内连续调用两次：
+    #     procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode"
+    #     procd_set_param env TS_NO_LOGS_NO_SUPPORT=true
+    # 结果前者被后者整个覆盖，TS_DEBUG_FIREWALL_MODE 丢失。
+    # 后果取决于 tailscale 版本：
+    #   - 1.80.3（如 24.10 feed）：回落到默认 iptables 模式，而本固件只有
+    #     nftables、没有 iptables 命令 → 启动即崩（procd crash loop）：
+    #       wgengine.NewUserspaceEngine(tun "tailscale0") error:
+    #         router.Up: setting netfilter mode:
+    #         exec: "iptables": executable file not found in $PATH
+    #   - 1.102.3（如 25.12 feed）：新版能自行检测并降级到 nftables，暂不显形，
+    #     但我们仍丧失了对防火墙模式的显式控制。
+    # 命令行 env 前缀不受 procd 行为影响，故作为首选方式。
+    procd_set_param command /usr/bin/env \
+        TS_DEBUG_FIREWALL_MODE="$fw_mode" \
+        TS_NO_LOGS_NO_SUPPORT=true \
+        $PROGD \
         --port "$port" \
         --state "$config_path/tailscaled.state" \
         --socket /var/run/tailscale/tailscaled.sock
-    
-    procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode"
-    procd_set_param env TS_NO_LOGS_NO_SUPPORT=true
-    
+
+    # 【关键 2】procd 的 env 也一并设置（双重保险），但必须一次调用传全部变量，
+    # 绝不可拆成多次 procd_set_param env（会互相覆盖，见上）。
+    procd_set_param env \
+        TS_DEBUG_FIREWALL_MODE="$fw_mode" \
+        TS_NO_LOGS_NO_SUPPORT=true
+
     procd_set_param respawn
     procd_close_instance
 }
