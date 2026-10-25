@@ -114,6 +114,11 @@ UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base q
 # UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
 UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
 UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
+# honk: 基于 eBPF 的透明代理引擎（dae 兼容）+ LuCI 界面。
+# 仓库为多包结构（honk/ 核心服务 + luci-app-honk/ 界面），用 pkg 模式分别提取。
+# 注意：honk-core 仅提供 x86_64 / aarch64 预编译 musl 二进制；
+# 且包 DEPENDS 含 @KERNEL_XDP_SOCKETS 与 CO-RE BTF 需求，内核未启用则包不可见。
+UPDATE_PACKAGE "honk" "QiuSimons/luci-app-honk" "master" "pkg"
 UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac sing-box luci-app-homeproxy luci-app-timewol luci-app-wolplus luci-app-wolultra"
 UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
 
