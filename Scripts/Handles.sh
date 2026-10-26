@@ -509,21 +509,25 @@ fi
 # =================================================================
 # 7. 目标架构级硬件与 DTS 补丁 (DAED / Qualcommax)
 # =================================================================
-# 针对启用 BTF 的 eBPF 代理目标扩大内核分区，并调整 BRBE
-# 条件覆盖所有自带 CONFIG_KERNEL_DEBUG_INFO_BTF=y 的 target：
-#   IPQ60XX-WIFI-YES-DAED（原有）
-#   IPQ60XX-WIFI-NO-DAE  （dae，*DAE* 已覆盖）
-#   IPQ60XX-WIFI-NO-HONK （honk，同样开 BTF，需单独列出）
+# 针对启用 BTF 的目标自动扩大内核分区，并调整 BRBE
+#
+# 判定方式改为直接检测目标 Config 是否启用 CONFIG_KERNEL_DEBUG_INFO_BTF=y，
+# 而不是靠 target 名字匹配（旧写法 *DAED* 曾漏掉 IPQ60XX-WIFI-NO-DAE 与
+# IPQ60XX-WIFI-NO-HONK，因为它们的名字里不含 "DAED"）。这样今后任何新增的
+# 启用 BTF 的 target 都会自动扩容，无需再改这里。
+#
 # 为何需要：开启 CO-RE BTF 后内核镜像实测达 7701276 字节，而设备默认
 # KERNEL_SIZE 为 6144k(6291456)，打包阶段直接报：
 #   WARNING: Image file .../jdcloud_re-cs-07-uImage.itb is too big: 7701276 > 6291456
 #   WARNING: Image file .../jdcloud_re-ss-01-uImage.itb is too big: 7701028 > 6291456
 #   ERROR: target/linux failed to build.
-# （DAE 之前未匹配 *DAED* 条件，一直停留在 6144k 故失败；DAED 因已扩容而正常。）
+# 注意这类超限报错后还会派生 "No such package: ath11k-firmware-*" 等看似无关的
+# 错误（打包中断导致后续 step 拿不到产物），排查时应看第一个 WARNING。
+#
 # re-cs-07 与 re-ss-01 的 flash 布局均留有 12M 内核分区空间，扩到 12288k 安全。
-# 注意：以后新增任何启用 BTF 的 target，都要把名字加进下面的条件。
-if [[ "${WRT_CONFIG^^}" == *"DAE"* || "${WRT_CONFIG^^}" == *"HONK"* ]]; then
-	echo "Triggering eBPF target (DAE/DAED/HONK) 12M kernel partition patch..."
+TARGET_CONFIG_FILE="${GITHUB_WORKSPACE:-}/Config/${WRT_CONFIG}.txt"
+if [ -f "$TARGET_CONFIG_FILE" ] && grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y' "$TARGET_CONFIG_FILE" 2>/dev/null; then
+	echo "BTF enabled in $WRT_CONFIG, applying 12M kernel partition patch..."
 	DAE_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-v1")
 	for DEV in "${DAE_DEVICES[@]}"; do
 		[ -f "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk" ] && \
@@ -533,7 +537,9 @@ if [[ "${WRT_CONFIG^^}" == *"DAE"* || "${WRT_CONFIG^^}" == *"HONK"* ]]; then
 	if [ -f "$TARGET_DIR/linux/qualcommax/config-6.18" ]; then
 		echo "# CONFIG_ARM64_BRBE is not set" >> "$TARGET_DIR/linux/qualcommax/config-6.18"
 	fi
-	echo "eBPF target 12M kernel size & BRBE patch applied successfully!"
+	echo "BTF target 12M kernel size & BRBE patch applied successfully!"
+else
+	echo "BTF not enabled for $WRT_CONFIG (or Config not found), skipping kernel size patch."
 fi
 
 # 修复 Linux 6.18 下 qualcommax 全局 DTB 编译报错
