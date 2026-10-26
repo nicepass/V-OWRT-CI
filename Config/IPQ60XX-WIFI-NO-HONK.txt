@@ -9,9 +9,7 @@ CONFIG_PACKAGE_kmod-ath=n
 CONFIG_PACKAGE_kmod-ath11k=n
 CONFIG_PACKAGE_kmod-ath11k-ahb=n
 CONFIG_PACKAGE_kmod-ath11k-pci=n
-CONFIG_PACKAGE_ath11k-firmware-ipq6018=n
 CONFIG_PACKAGE_ath11k-firmware-ipq6018-ddwrt=n
-CONFIG_PACKAGE_ath11k-firmware-qcn9074=n
 CONFIG_PACKAGE_ath11k-firmware-qcn9074-ddwrt=n
 #honk 内核前提（与 IPQ60XX-WIFI-NO-DAE 保持一致，该组合已实测可编译、可刷机运行）
 #honk 的 Makefile 声明 DEPENDS 含 @KERNEL_XDP_SOCKETS 与 CO-RE BTF 需求，

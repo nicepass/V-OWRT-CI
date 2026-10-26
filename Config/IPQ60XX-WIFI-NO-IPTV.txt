@@ -8,8 +8,6 @@ CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-02=y
 CONFIG_PACKAGE_kmod-ath11k=n
 CONFIG_PACKAGE_kmod-ath11k-ahb=n
 CONFIG_PACKAGE_kmod-ath11k-pci=n
-CONFIG_PACKAGE_ath11k-firmware-ipq6018=n
-CONFIG_PACKAGE_ath11k-firmware-qcn9074=n
 CONFIG_PACKAGE_wpad-openssl=n
 CONFIG_PACKAGE_hostapd-common=n
 #添加iptv插件

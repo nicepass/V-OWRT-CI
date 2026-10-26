@@ -537,3 +537,24 @@ if [ -d "$TARGET_DIR/linux/qualcommax" ]; then
 		-e '/nvmem-cells = <&macaddr_lan/d' 2>/dev/null || true
 	echo "Qualcommax DTS has been fixed!"
 fi
+
+# 修复 qualcommax 设备定义引用了已被上游移除的 ath11k 固件包
+# 上游 package/firmware/ath11k-firmware/Makefile 现只提供带 -ddwrt 后缀的固件包
+# （以及 ipq5018-qcn6122），已移除无后缀的 ath11k-firmware-ipq6018 与
+# ath11k-firmware-qcn9074。但 target/linux/qualcommax/image/ipq60xx.mk 中
+# jdcloud_re-cs-07 的 DEVICE_PACKAGES 仍在用 "-pkg" 语法排除这两个已不存在的包，
+# 导致固件打包阶段报：
+#   ERROR: No such package: ath11k-firmware-ipq6018
+#   ERROR: No such package: ath11k-firmware-qcn9074
+#   make[5]: *** [...-squashfs-sysupgrade.bin] Error 1
+#   ERROR: target/linux failed to build.
+# 注意：只删除「后面紧跟空格或行尾」的裸包名项，-ddwrt 版本必须保留
+# （模式用前瞻断言，避免把 -ath11k-firmware-ipq6018-ddwrt 误伤）。
+for IPQ_MK in "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk" \
+               "$TARGET_DIR/linux/qualcommax/image/ipq807x.mk"; do
+	[ -f "$IPQ_MK" ] || continue
+	if grep -qE '(^|[[:space:]])-ath11k-firmware-(ipq6018|qcn9074)([[:space:]]|$)' "$IPQ_MK"; then
+		sed -i -E 's/(^|[[:space:]])-ath11k-firmware-ipq6018([[:space:]]|$)/\1\2/g; s/(^|[[:space:]])-ath11k-firmware-qcn9074([[:space:]]|$)/\1\2/g' "$IPQ_MK"
+		echo "ath11k firmware ghost deps removed from $(basename "$IPQ_MK")"
+	fi
+done
