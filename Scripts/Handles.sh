@@ -509,11 +509,23 @@ fi
 # =================================================================
 # 7. 目标架构级硬件与 DTS 补丁 (DAED / Qualcommax)
 # =================================================================
-# 针对 DAED 的 12M 内核分区和 BRBE 调整
-if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
-	echo "Triggering DAED hardware modifications..."
-	DAED_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-v1")
-	for DEV in "${DAED_DEVICES[@]}"; do
+# 针对启用 BTF 的 eBPF 代理目标扩大内核分区，并调整 BRBE
+# 条件覆盖所有自带 CONFIG_KERNEL_DEBUG_INFO_BTF=y 的 target：
+#   IPQ60XX-WIFI-YES-DAED（原有）
+#   IPQ60XX-WIFI-NO-DAE  （dae，*DAE* 已覆盖）
+#   IPQ60XX-WIFI-NO-HONK （honk，同样开 BTF，需单独列出）
+# 为何需要：开启 CO-RE BTF 后内核镜像实测达 7701276 字节，而设备默认
+# KERNEL_SIZE 为 6144k(6291456)，打包阶段直接报：
+#   WARNING: Image file .../jdcloud_re-cs-07-uImage.itb is too big: 7701276 > 6291456
+#   WARNING: Image file .../jdcloud_re-ss-01-uImage.itb is too big: 7701028 > 6291456
+#   ERROR: target/linux failed to build.
+# （DAE 之前未匹配 *DAED* 条件，一直停留在 6144k 故失败；DAED 因已扩容而正常。）
+# re-cs-07 与 re-ss-01 的 flash 布局均留有 12M 内核分区空间，扩到 12288k 安全。
+# 注意：以后新增任何启用 BTF 的 target，都要把名字加进下面的条件。
+if [[ "${WRT_CONFIG^^}" == *"DAE"* || "${WRT_CONFIG^^}" == *"HONK"* ]]; then
+	echo "Triggering eBPF target (DAE/DAED/HONK) 12M kernel partition patch..."
+	DAE_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-v1")
+	for DEV in "${DAE_DEVICES[@]}"; do
 		[ -f "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk" ] && \
 			sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk"
 	done
@@ -521,7 +533,7 @@ if [[ "${WRT_CONFIG^^}" == *"DAED"* ]]; then
 	if [ -f "$TARGET_DIR/linux/qualcommax/config-6.18" ]; then
 		echo "# CONFIG_ARM64_BRBE is not set" >> "$TARGET_DIR/linux/qualcommax/config-6.18"
 	fi
-	echo "DAED 12M kernel size & BRBE patch applied successfully!"
+	echo "eBPF target 12M kernel size & BRBE patch applied successfully!"
 fi
 
 # 修复 Linux 6.18 下 qualcommax 全局 DTB 编译报错
