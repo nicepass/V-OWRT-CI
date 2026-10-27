@@ -24,6 +24,18 @@ CONFIG_KERNEL_KPROBES=y
 # CONFIG_KERNEL_ARM64_BRBE is not set
 #添加大鹅插件
 CONFIG_PACKAGE_luci-app-daed=y
+#添加honk插件
+#内核前提（XDP_SOCKETS / DEBUG_INFO_BTF / KPROBES 等）已在上方大鹅核心配置段启用，
+#honk 的 @KERNEL_XDP_SOCKETS 与 CO-RE BTF 需求均可满足。
+#运行时 kmod 各自声明了 KCONFIG，会自动开启所需内核选项。
+CONFIG_PACKAGE_kmod-sched-core=y
+CONFIG_PACKAGE_kmod-sched-bpf=y
+CONFIG_PACKAGE_kmod-veth=y
+CONFIG_PACKAGE_kmod-nft-queue=y
+CONFIG_PACKAGE_v2ray-geoip=y
+CONFIG_PACKAGE_v2ray-geosite=y
+CONFIG_PACKAGE_honk=y
+CONFIG_PACKAGE_luci-app-honk=y
 #添加docker插件
 CONFIG_PACKAGE_luci-app-dockerman=y
 #添加iptv插件
