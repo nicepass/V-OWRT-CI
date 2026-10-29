@@ -77,6 +77,10 @@ UPDATE_PACKAGE "noobwrt" "nooblk-98/luci-theme-noobwrt" "master"
 UPDATE_PACKAGE "shadcn" "eamonxg/luci-theme-shadcn" "main"
 UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 UPDATE_PACKAGE "footstrap" "VizzleTF/luci-theme-footstrap" "main"
+# vantage 新主题（上游 47ccfe2 引入）
+# 仓库为多包结构（luci-theme-vantage + luci-app-vantage），必须用 pkg 模式分别提取；
+# 默认模式只会克隆根目录，两个子包的 Makefile 都无法被扫描到。
+UPDATE_PACKAGE "vantage" "anothaDev/luci-theme-vantage" "main" "pkg"
 
 UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
 UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
@@ -119,7 +123,9 @@ UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 # 注意：honk-core 仅提供 x86_64 / aarch64 预编译 musl 二进制；
 # 且包 DEPENDS 含 @KERNEL_XDP_SOCKETS 与 CO-RE BTF 需求，内核未启用则包不可见。
 UPDATE_PACKAGE "honk" "QiuSimons/luci-app-honk" "master" "pkg"
-UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac sing-box luci-app-homeproxy luci-app-timewol luci-app-wolplus luci-app-wolultra"
+# viking 包组：上游 64b8aea 新增 miniupnpd 与 luci-app-upnp
+# （此前 upnp 编译报错的问题上游已修复，故一并取入）
+UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac miniupnpd sing-box luci-app-homeproxy luci-app-timewol luci-app-upnp luci-app-wolplus luci-app-wolultra"
 UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
 
 #更新软件包版本

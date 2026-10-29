@@ -304,6 +304,12 @@ jobs:
           fi
 
           $GITHUB_WORKSPACE/Scripts/Settings.sh
+          # 统一 host 工具链（Go bootstrap / Python PGO 关闭 / LLVM for BPF）。
+          # 其中 BPF 段会用 host LLVM 做一次真实 smoke 编译，并把
+          # CONFIG_BPF_TOOLCHAIN_* 重写为 CONFIG_BPF_TOOLCHAIN_HOST=y + HOST_PATH，
+          # 因此目标 Config 里手写的 BPF_TOOLCHAIN_* 行会被它统一接管（先删后写）。
+          # 必须在 make defconfig 之前执行，因为它改的是 .config。
+          $GITHUB_WORKSPACE/.github/scripts/prepare-build-host.sh
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
 
