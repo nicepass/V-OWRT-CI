@@ -10,7 +10,13 @@ CONFIG_PACKAGE_luci-app-easytier=y
 CONFIG_PACKAGE_luci-app-tailscale-community=y
 CONFIG_PACKAGE_luci-app-frpc=y
 CONFIG_PACKAGE_luci-app-filemanager=y
-CONFIG_PACKAGE_luci-app-upnp=n
+#upnp 说明：此处原为 CONFIG_PACKAGE_luci-app-upnp=n。
+#GENERAL.txt 由 WRT-CORE.yml 在目标 Config 之后追加（cat 目标 GENERAL >> .config），
+#因此本文件里的任何值都会覆盖目标 Config 里的同名项。
+#X86-M 目标需要启用 upnp，若在此保留 =n 会把它覆盖掉（实测 luci-app-upnp 变成
+#is not set，而 miniupnpd-nftables=y 正常，因为本文件没有该行）。
+#故改为注释：其余目标均未显式写 luci-app-upnp，OpenWrt 默认即为不选，行为不变。
+#CONFIG_PACKAGE_luci-app-upnp=n
 CONFIG_PACKAGE_luci-app-wolultra=y
 #删除插件
 CONFIG_PACKAGE_luci-app-attendedsysupgrade=n
