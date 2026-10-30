@@ -19,7 +19,15 @@ CONFIG_PACKAGE_wpad-openssl=y
 CONFIG_GRUB_IMAGES=y
 CONFIG_VMDK_IMAGES=y
 CONFIG_TARGET_KERNEL_PARTSIZE=128
-CONFIG_TARGET_ROOTFS_PARTSIZE=1024
+# rootfs 分区 2048MB（默认模板是 1024）。
+# 原因：本目标带 dockerman，squashfs 模式下可写空间 = PARTSIZE − squashfs 实际占用
+# （1024 − 168.8 ≈ 855MB），装完固件后几乎没法再 opkg 装东西。
+# 提到 2048 后 overlay 约 1.83GB。镜像会 pad 到 2048MB，但 gz 压缩零填充效率高，
+# 产物体积不会等比增长。
+# 注意：分区布局随之改变 —— sda2 从 1G 变 2G，起始 262656 结束 4456959 sectors。
+# 若机器上已按旧布局建了第三个分区（Docker 数据盘），重刷前必须先调整它，
+# 否则新 sda2 会覆盖过去，数据直接损坏。
+CONFIG_TARGET_ROOTFS_PARTSIZE=2048
 CONFIG_TARGET_ROOTFS_EXT4FS=n
 #内核模块调整
 CONFIG_PACKAGE_kmod-hwmon-w83627ehf=y
