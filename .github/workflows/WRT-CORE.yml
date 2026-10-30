@@ -297,6 +297,65 @@ jobs:
         run: |
           cd ./wrt/
 
+          # Config 覆盖冲突前置检测。
+          # 下一行的 cat 把 GENERAL.txt 追加在目标 Config 之后，kconfig 对同一符号
+          # 取最后一次赋值，因此 GENERAL.txt 里任何与目标 Config 取值不同的符号都会
+          # 静默覆盖目标值（曾导致 X86-M 的 luci-app-upnp=y 被 GENERAL 的 =n 顶掉，
+          # 编译绿但插件根本没进 .config）。
+          # 这里在追加之前做符号级比对，有冲突直接 fail，避免再次静默失效。
+          # 只比对 `CONFIG_xxx=value` 形式；`#` 开头的注释行（含 kconfig 的
+          # `# CONFIG_x is not set`）一律跳过。
+          # TEST 分支不追加 GENERAL.txt，故不在此检查范围内。
+          if [[ "${WRT_CONFIG,,}" != *"test"* ]]; then
+            TARGET_CFG="$GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt"
+            SHARED_CFG="$GITHUB_WORKSPACE/Config/GENERAL.txt"
+            if [ -f "$TARGET_CFG" ] && [ -f "$SHARED_CFG" ]; then
+              echo "Checking Config override conflicts: $WRT_CONFIG.txt vs GENERAL.txt"
+              set +e
+              CONFLICT_TABLE=$(awk -v tf="$TARGET_CFG" -v sf="$SHARED_CFG" '
+                function load(file, arr,    line, pos, sym, val) {
+                  while ((getline line < file) > 0) {
+                    sub(/\r$/, "", line)
+                    if (line ~ /^[[:space:]]*#/) continue
+                    if (line ~ /^[[:space:]]*$/) continue
+                    pos = index(line, "=")
+                    if (pos == 0) continue
+                    sym = substr(line, 1, pos - 1)
+                    val = substr(line, pos + 1)
+                    gsub(/[[:space:]]/, "", sym)
+                    sub(/[[:space:]]+$/, "", val)
+                    if (sym !~ /^CONFIG_/) continue
+                    arr[sym] = val
+                  }
+                  close(file)
+                }
+                BEGIN {
+                  load(tf, t)
+                  load(sf, s)
+                  n = 0
+                  for (k in s) {
+                    if ((k in t) && t[k] != s[k]) {
+                      printf "  %-58s target=%s  shared=%s\n", k, t[k], s[k]
+                      n++
+                    }
+                  }
+                  exit (n > 0) ? 1 : 0
+                }
+              ')
+              RC=$?
+              set -e
+              if [ "$RC" -ne 0 ]; then
+                echo "::error::Config 覆盖冲突：以下符号在 GENERAL.txt 中的取值会覆盖 $WRT_CONFIG.txt"
+                echo "$CONFLICT_TABLE"
+                echo ""
+                echo "原因：WRT-CORE.yml 用 cat 目标Config GENERAL.txt >> .config，后追加者胜。"
+                echo "修复：注释掉 GENERAL.txt 里的冲突行（改目标 Config 无效，会被覆盖）。"
+                exit 1
+              fi
+              echo "  OK: no override conflict"
+            fi
+          fi
+
           if [[ "${WRT_CONFIG,,}" == *"test"* ]]; then
             cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt >> .config
           else
