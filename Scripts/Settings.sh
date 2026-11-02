@@ -11,12 +11,21 @@ find ./feeds/luci/modules/luci-mod-system/ -type f -name "flash.js" -exec sed -i
 #添加编译日期标识
 find ./feeds/luci/modules/luci-mod-status/ -type f -name "10_system.js" -exec sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ $WRT_MARK-$WRT_DATE')/g" {} +
 
+#修改默认WIFI账号密码
+#两种配置源的写法不同，必须分别处理，否则补丁静默失效（不报错、WIFI名保持默认）：
+#  mac80211.uc : set ${si}.ssid='OWRT'    —— ssid 带等号
+#  router-tool : option ssid ''           —— ssid 后跟空格，无等号
+#上游 4b250e1 把两者合并成 "ssid '<值>'" 一种写法，对 mac80211.uc 匹配不到；
+#而本仓库的 Config 均未启用 luci-app-router-tool，于是两处都不生效。
 WIFI_UC="./package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc"
+ROUTER_TOOL="./package/emortal/luci-app-router-tool/root/etc/config/router-tool"
 if [ -f "$WIFI_UC" ]; then
-	#修改WIFI名称
-	sed -i "s/ssid='.*'/ssid='$WRT_SSID'/g" $WIFI_UC
-	#修改WIFI密码
-	sed -i "s/key='.*'/key='$WRT_WORD'/g" $WIFI_UC
+	sed -i "s/ssid='.*'/ssid='$WRT_SSID'/g" "$WIFI_UC"
+	sed -i "s/key='.*'/key='$WRT_WORD'/g" "$WIFI_UC"
+fi
+if [ -f "$ROUTER_TOOL" ]; then
+	sed -i "s/ssid '.*'/ssid '$WRT_SSID'/g" "$ROUTER_TOOL"
+	sed -i "s/key '.*'/key '$WRT_WORD'/g" "$ROUTER_TOOL"
 fi
 
 CFG_FILE="./package/base-files/files/bin/config_generate"
