@@ -4,16 +4,21 @@
 #CI项目
 #说明：本 workflow 基于 OWRT-ALL.yml 模板，仅用于 X86-M 单目标。
 #与 OWRT-ALL 的差异：
-#  1. 只保留 workflow_dispatch（手动触发），不跟随 Auto-Clean 自动运行。
-#     原因：X86-M 是实验性目标（相对 X86.txt 增加了 dockerman/upnp，
-#     honk 配置保留但暂不测试使用），无需每次全量编译都跑，避免占用 runner。
-#     需要时手动 dispatch 或在 GitHub 页面点 Run workflow。
-#  2. matrix 只有 X86-M 一个 CONFIG。
+#  1. matrix 只有 X86-M 一个 CONFIG。
+#  2. 触发方式与 OWRT-ALL 一致：跟随 Auto-Clean 自动编译 + 支持手动 dispatch。
+#     本文件最初只保留 workflow_dispatch（当时把 X86-M 当实验性目标）。
+#     2026-11-02 的编译（run 41383136807, commit 11941da）全绿后，
+#     按用户要求并入每日定时。
 name: OWRT-X86M
 
 #CI计划
 on:
-  #仅手动编译
+  #自动编译：当Auto-Clean运行完成后
+  workflow_run:
+    workflows: ["Auto-Clean"]
+    types:
+      - completed
+  #手动编译
   workflow_dispatch:
     inputs:
       PACKAGE:
