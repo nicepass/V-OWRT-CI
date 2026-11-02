@@ -201,6 +201,50 @@ if [ -n "$HP_DIR" ]; then
 fi
 
 # =================================================================
+# 2b. 预置 ndisc6 源码（上游 remlab.net 已全部 410 Gone）
+# =================================================================
+# 背景：QModem 的 application/ndisc6 用 PKG_VERSION=1.0.2、
+# PKG_SOURCE_URL=http://www.remlab.net/files/ndisc6，且**没有 PKG_HASH**。
+# 该站点现在对 1.0.2 / 1.0.3 / 1.0.4 一律返回 410 Gone，OpenWrt 与
+# ImmortalWrt 的 sources 镜像也都没有这个文件（实测全部 404 / 403），
+# 于是 make download 把所有镜像遍历一遍后失败，CPE 目标在编译阶段挂掉：
+#   make[3]: *** [Makefile:96: .../dl/ndisc6-1.0.2.tar.bz2] Error 2
+#   ERROR: package/feeds/qmodem/ndisc6 failed to build.
+#
+# 不能简单把 QModem 的 ndisc6 choice 关掉：modem_dial.sh 在 IPv4v6 双栈
+# 拨号时会调用 `rdisc6 $origin_device &` / `ndisc6 fe80::1 $origin_device &`
+# 主动触发 IPv6 路由/邻居发现。
+#
+# 方案：用 web.archive.org 的原始文件快照预置到 dl/，让 make download 直接命中。
+#   注意 URL 必须带 id_ 后缀，否则返回的是带工具栏的 HTML 页面，tar 解不开。
+# 只在装了 qmodem feed 的目标（CPE）执行，其他目标完全不受影响。
+if [ -d "$FEEDS_DIR/qmodem" ]; then
+	NDISC6_VER="1.0.2"
+	NDISC6_DL="$WRT_DIR/dl/ndisc6-${NDISC6_VER}.tar.bz2"
+	NDISC6_URL="https://web.archive.org/web/2020id_/https://www.remlab.net/files/ndisc6/ndisc6-${NDISC6_VER}.tar.bz2"
+	# 实测下载验证过的 SHA256（239249 字节，bzip2 tar，顶层目录 ndisc6-1.0.2/，102 个条目）
+	NDISC6_SHA="6acec8a0cb9efa3ac98456f46c3016aeec0598b0c7557c95242b5228ad62ca7a"
+	if [ -s "$NDISC6_DL" ]; then
+		echo "ndisc6 ${NDISC6_VER} already present in dl/, skip seeding."
+	else
+		mkdir -p "$WRT_DIR/dl"
+		echo "ndisc6: upstream remlab.net is 410 Gone, seeding from web.archive.org ..."
+		if curl -fsSL --retry 3 --connect-timeout 15 --max-time 180 \
+			-o "$NDISC6_DL" "$NDISC6_URL"; then
+			GOT_SHA=$(sha256sum "$NDISC6_DL" | cut -d' ' -f1)
+			if [ "$GOT_SHA" = "$NDISC6_SHA" ]; then
+				echo "ndisc6: seeded OK (sha256 verified)."
+			else
+				echo "WARNING: ndisc6 sha256 mismatch ($GOT_SHA != $NDISC6_SHA), discarding."
+				rm -f "$NDISC6_DL"
+			fi
+		else
+			echo "WARNING: ndisc6 seeding failed; ndisc6/rdisc6 download will fail later."
+		fi
+	fi
+fi
+
+# =================================================================
 # 3. 主题与 UI 界面定制
 # =================================================================
 # 修改 argon 主题字体和颜色
