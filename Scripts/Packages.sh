@@ -132,8 +132,7 @@ UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 UPDATE_PACKAGE "honk" "QiuSimons/luci-app-honk" "master" "pkg"
 # viking 包组：上游 64b8aea 新增 miniupnpd 与 luci-app-upnp
 # （此前 upnp 编译报错的问题上游已修复，故一并取入）
-UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac miniupnpd sing-box luci-app-homeproxy luci-app-timewol luci-app-upnp luci-app-wolplus luci-app-wolultra"
-UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
+UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac miniupnpd sing-box luci-app-homeproxy luci-app-upnp luci-app-wolultra"
 
 #更新软件包版本
 UPDATE_VERSION() {
