@@ -245,6 +245,88 @@ if [ -d "$FEEDS_DIR/qmodem" ]; then
 fi
 
 # =================================================================
+# 2c. 预置 honk-core 预编译二进制（绕过上游的 zig 现场编译）
+# =================================================================
+# 背景：honk 上游从 2026.11.03 起把 honk/Makefile 的 Build/Compile 改成
+#
+#     "$(CURDIR)/build_honk_core.sh" --if-needed "$(ARCH)" "$(CURDIR)/files/honk-core.bin"
+#     $(INSTALL_BIN) "$(CURDIR)/files/honk-core.bin" "$(PKG_INSTALL_DIR)/bin/honk-core"
+#
+# 该脚本用 zig 交叉编译 Rust + eBPF，要求 PATH 里有 zig / bpf-linker / cargo，
+# zig 版本还需与上游 pins.env 精确相等，另加 rustup+nightly+rust-src+llvm-tools。
+# GitHub runner 上这些都没有，于是每个目标都报 ERROR: zig not found in PATH。
+#
+# 曾经的做法是把 Packages.sh 里的 honk 固定到 honk_415.3_pre1-r1（旧版走预编译
+# tarball）。但上游几小时后把该 tag 和 release 一并删除了，clone 直接报
+# `Remote branch honk_415.3_pre1-r1 not found in upstream origin` —— 固定 tag
+# 不可靠，上游随时会清。上游保留了每个 release 的 ipk/apk（内含预编译
+# honk-core），所以改为：从最新 release 的 ipk 里取出静态二进制，放到
+# files/honk-core.bin，并且【不放 .stamp】。
+#
+# build_honk_core.sh 的逻辑是 --if-needed 时若 bin 存在且【无 stamp】就直接
+# `using prebuilt honk-core (no stamp)` 并 exit 0，随后 Makefile 把这个 bin
+# 安装到 /usr/bin/honk-core —— 整条 zig/rust 链路被跳过。
+#
+# 另一个上游缺陷顺带修掉：该脚本的 arch 白名单只有
+#   aarch64 | aarch64_generic | x86_64
+# 而 ipq60xx 等目标是 aarch64_cortex-a53，且这个 case 检查排在 prebuilt 判断
+# 【之前】，不先放宽的话即使预置了 bin 也会在 case 处 exit 1。
+HONK_PKG_DIR="$(find "$PKG_PATH" -maxdepth 2 -type d -name honk -print -quit 2>/dev/null)"
+if [ -n "$HONK_PKG_DIR" ] && [ -f "$HONK_PKG_DIR/build_honk_core.sh" ]; then
+	echo "honk: upstream builds core via zig (absent on runner), seeding prebuilt binary"
+
+	if grep -q '^  aarch64|aarch64_generic|aarch64-unknown-linux-musl)$' "$HONK_PKG_DIR/build_honk_core.sh" 2>/dev/null; then
+		sed -i 's#^  aarch64|aarch64_generic|aarch64-unknown-linux-musl)$#  aarch64|aarch64_*|aarch64-unknown-linux-musl)#' \
+			"$HONK_PKG_DIR/build_honk_core.sh"
+		echo "honk: relaxed build_honk_core.sh arch match to accept aarch64_*"
+	fi
+
+	case "${WRT_TARGET:-}" in
+		x86) HONK_ASSET_ARCH="x86_64-x86_64" ;;
+		*)   HONK_ASSET_ARCH="aarch64_generic-aarch64_generic" ;;
+	esac
+
+	HONK_BIN="$HONK_PKG_DIR/files/honk-core.bin"
+	rm -f "$HONK_BIN.stamp"      # 有 stamp 会强制重新编译，必须清掉
+
+	if [ -s "$HONK_BIN" ]; then
+		echo "honk: prebuilt honk-core already present, skip seeding"
+	else
+		HONK_URL="$(curl -fsSL --max-time 60 \
+			-H "Authorization: Bearer ${GITHUB_TOKEN:-}" \
+			-H "Accept: application/vnd.github+json" \
+			"https://api.github.com/repos/QiuSimons/luci-app-honk/releases/latest" 2>/dev/null \
+			| jq -r --arg a "$HONK_ASSET_ARCH" \
+			  '.assets[] | select(.name | test("-openwrt-[0-9.]+\\.ipk$")) | select(.name | contains($a)) | .browser_download_url' \
+			2>/dev/null | head -n1)"
+
+		HONK_TMP="$(mktemp -d)"
+		if [ -n "$HONK_URL" ] && \
+		   curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 \
+		     -o "$HONK_TMP/honk.ipk" "$HONK_URL"; then
+			# OpenWrt 24.10 起的 ipk 是 gzip 压缩的 tar（含 debian-binary /
+			# data.tar.gz / control.tar.gz），不是老的 ar 归档，不能用 ar x。
+			# 注意成员名带 './' 前缀（./debian-binary、./data.tar.gz），
+			# 全量解出后按相对路径引用，避免按成员名精确匹配踩空。
+			tar xzf "$HONK_TMP/honk.ipk" -C "$HONK_TMP" 2>/dev/null
+			[ -f "$HONK_TMP/data.tar.gz" ] && \
+				tar xzf "$HONK_TMP/data.tar.gz" -C "$HONK_TMP" ./usr/bin/honk-core 2>/dev/null
+			if [ -s "$HONK_TMP/usr/bin/honk-core" ]; then
+				cp -f "$HONK_TMP/usr/bin/honk-core" "$HONK_BIN"
+				chmod +x "$HONK_BIN"
+				echo "honk: seeded $(du -h "$HONK_BIN" | cut -f1) honk-core from $(basename "$HONK_URL")"
+				echo "honk: sha256 $(sha256sum "$HONK_BIN" | cut -d' ' -f1)"
+			else
+				echo "WARNING: honk-core not found inside downloaded ipk"
+			fi
+		else
+			echo "WARNING: failed to fetch honk ipk (url='${HONK_URL:-<none>}'); build will fail at the zig check"
+		fi
+		rm -rf "$HONK_TMP"
+	fi
+fi
+
+# =================================================================
 # 3. 主题与 UI 界面定制
 # =================================================================
 # 修改 argon 主题字体和颜色
