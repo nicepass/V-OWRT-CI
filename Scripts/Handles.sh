@@ -292,12 +292,22 @@ if [ -n "$HONK_PKG_DIR" ] && [ -f "$HONK_PKG_DIR/build_honk_core.sh" ]; then
 	if [ -s "$HONK_BIN" ]; then
 		echo "honk: prebuilt honk-core already present, skip seeding"
 	else
-		HONK_URL="$(curl -fsSL --max-time 60 \
-			-H "Authorization: Bearer ${GITHUB_TOKEN:-}" \
-			-H "Accept: application/vnd.github+json" \
-			"https://api.github.com/repos/QiuSimons/luci-app-honk/releases/latest" 2>/dev/null \
+		# luci-app-honk 是 public 仓库，匿名读 API 即可（限额 60 次/小时，
+		# 本流程只查一次）。优先匿名：Actions 的 GITHUB_TOKEN 只对当前仓库
+		# 有权限，带上去查第三方仓库反而是噪音；仅在匿名失败（限流）时才
+		# 用 token 兜底重试。
+		HONK_API="https://api.github.com/repos/QiuSimons/luci-app-honk/releases/latest"
+		HONK_JSON="$(curl -fsSL --max-time 60 \
+			-H "Accept: application/vnd.github+json" "$HONK_API" 2>/dev/null)"
+		if [ -z "$HONK_JSON" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+			echo "honk: anonymous API call returned nothing, retrying with token"
+			HONK_JSON="$(curl -fsSL --max-time 60 \
+				-H "Authorization: Bearer ${GITHUB_TOKEN}" \
+				-H "Accept: application/vnd.github+json" "$HONK_API" 2>/dev/null)"
+		fi
+		HONK_URL="$(printf '%s' "$HONK_JSON" \
 			| jq -r --arg a "$HONK_ASSET_ARCH" \
-			  '.assets[] | select(.name | test("-openwrt-[0-9.]+\\.ipk$")) | select(.name | contains($a)) | .browser_download_url' \
+			  '.assets[]? | select(.name | test("-openwrt-[0-9.]+\\.ipk$")) | select(.name | contains($a)) | .browser_download_url' \
 			2>/dev/null | head -n1)"
 
 		HONK_TMP="$(mktemp -d)"
