@@ -122,7 +122,26 @@ UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 # 仓库为多包结构（honk/ 核心服务 + luci-app-honk/ 界面），用 pkg 模式分别提取。
 # 注意：honk-core 仅提供 x86_64 / aarch64 预编译 musl 二进制；
 # 且包 DEPENDS 含 @KERNEL_XDP_SOCKETS 与 CO-RE BTF 需求，内核未启用则包不可见。
-UPDATE_PACKAGE "honk" "QiuSimons/luci-app-honk" "master" "pkg"
+#
+# ★ 固定在 honk_415.3_pre1-r1，不要跟 master。
+#   上游从 2026.11.03 起改了发布方式：不再由 honk/Makefile 直接下载预编译
+#   tarball（旧版 Build/Compile 是 `true`），改为调用 build_honk_core.sh
+#   用 zig 交叉编译 Rust + eBPF。该脚本要求 PATH 里有 zig / bpf-linker /
+#   cargo，且 zig 版本必须与 .github/ci/pins.env 里的 pin 精确相等，
+#   还要 rustup + nightly toolchain + rust-src + llvm-tools。
+#   GitHub runner 上没有这些，于是每个目标都报：
+#       ERROR: zig not found in PATH
+#       ERROR: package/honk failed to build.
+#   2026-11-04 的 OWRT-ALL（X86 + E20C）就此双双失败。
+#
+#   固定版仍从 daeuniverse/honk 的 release 下载预编译 musl 二进制，
+#   零编译依赖；且该版本正是 E20C 固件上已实测可用的版本。
+#   升级前需先确认 runner 侧具备完整 zig/rust 工具链，否则不要在 Packages.sh
+#   里把它改回 master。
+#   预编译 asset 实测仍在（x86_64 18.9MB / aarch64 17.8MB），
+#   aarch64 的 SHA256 与 Makefile 声明一致：
+#     8ffd3327d7039a430e0370a917fc4eaa75d85bb256f3d23753da0e1d06e57d72
+UPDATE_PACKAGE "honk" "QiuSimons/luci-app-honk" "honk_415.3_pre1-r1" "pkg"
 # viking 包组：上游 64b8aea 新增 miniupnpd 与 luci-app-upnp
 # （此前 upnp 编译报错的问题上游已修复，故一并取入）
 UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac miniupnpd sing-box luci-app-homeproxy luci-app-timewol luci-app-upnp luci-app-wolplus luci-app-wolultra"
