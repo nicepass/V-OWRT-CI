@@ -661,14 +661,46 @@ fi
 # 错误（打包中断导致后续 step 拿不到产物），排查时应看第一个 WARNING。
 #
 # re-cs-07 与 re-ss-01 的 flash 布局均留有 12M 内核分区空间，扩到 12288k 安全。
+#
+# 为何列的是父定义而不是具体设备：link_nn6000-v1 / link_nn6000-v2 都只是
+# "$(Device/link_nn6000-common)" 的变体，自身没有 KERNEL_SIZE 行，
+# 所以 sed 匹配 "define Device/link_nn6000-v1" 段落时找不到可替换内容、静默无效，
+# 导致 v2 仍用父定义的 6144k，打包报：
+#   WARNING: Image file .../link_nn6000-v2-uImage.itb is too big: 7758892 > 6291456
+#   make[5]: *** [...link_nn6000-v2-squashfs-sysupgrade.bin] Error 1
+# 改为 sed 父定义 link_nn6000-common，v1/v2 及今后新增变体一并覆盖。
+# link_nn6000-common 走 Device/EmmcImage（eMMC 介质，DTS 无固定分区表），
+# KERNEL_SIZE 仅作为 factory.bin 的 pad-to 值，扩到 12M 不动硬件分区，安全。
 TARGET_CONFIG_FILE="${GITHUB_WORKSPACE:-}/Config/${WRT_CONFIG}.txt"
 if [ -f "$TARGET_CONFIG_FILE" ] && grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y' "$TARGET_CONFIG_FILE" 2>/dev/null; then
 	echo "BTF enabled in $WRT_CONFIG, applying 12M kernel partition patch..."
-	DAE_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-v1")
+	DAE_DEVICES=("jdcloud_re-cs-07" "jdcloud_re-ss-01" "link_nn6000-common")
 	for DEV in "${DAE_DEVICES[@]}"; do
-		[ -f "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk" ] && \
-			sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" "$TARGET_DIR/linux/qualcommax/image/ipq60xx.mk"
+		for MK in ipq60xx.mk ipq807x.mk; do
+			[ -f "$TARGET_DIR/linux/qualcommax/image/$MK" ] || continue
+			grep -q "define Device/$DEV" "$TARGET_DIR/linux/qualcommax/image/$MK" || continue
+			sed -i "/define Device\/$DEV/,/endef/ s/KERNEL_SIZE := .*/KERNEL_SIZE := 12288k/" \
+				"$TARGET_DIR/linux/qualcommax/image/$MK"
+			echo "  KERNEL_SIZE -> 12288k: $DEV (in $MK)"
+		done
 	done
+	# 校验：确认父定义的 KERNEL_SIZE 确实改到了（sed 静默失效时给出可诊断的告警）
+	_found=0; _ok=0
+	for MK in ipq60xx.mk ipq807x.mk; do
+		MKF="$TARGET_DIR/linux/qualcommax/image/$MK"
+		[ -f "$MKF" ] || continue
+		grep -q "define Device/link_nn6000-common" "$MKF" || continue
+		_found=1
+		if grep -A12 "define Device/link_nn6000-common" "$MKF" | grep -q "KERNEL_SIZE := 12288k"; then
+			_ok=1
+			echo "  VERIFIED: link_nn6000-common KERNEL_SIZE = 12288k (in $MK)"
+		fi
+	done
+	if [ "$_found" -eq 0 ]; then
+		echo "  NOTE: link_nn6000-common not in this source tree, skipped."
+	elif [ "$_ok" -eq 0 ]; then
+		echo "  WARNING: link_nn6000-common KERNEL_SIZE patch did NOT take effect!"
+	fi
 
 	if [ -f "$TARGET_DIR/linux/qualcommax/config-6.18" ]; then
 		echo "# CONFIG_ARM64_BRBE is not set" >> "$TARGET_DIR/linux/qualcommax/config-6.18"
