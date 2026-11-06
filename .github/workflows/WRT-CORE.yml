@@ -72,52 +72,58 @@ jobs:
       - name: Checkout Projects
         uses: actions/checkout@main
 
-      - name: Initialization Environment
+      # ── 环境初始化：拆成可观测的子步骤 ──
+      # 原先是单个 "Initialization Environment" 黑盒步骤。2026-11-06 该步骤在
+      # 全部 10 个 job 上卡死（19-84 分钟），job 被判 failure 但没有任何步骤
+      # conclusion=failure，GitHub 只给 "runner lost communication" 一条注解，
+      # 完全无法定位卡在哪条命令。拆开后每个子步骤独立可见。
+      #
+      # 每条 apt 命令都用 timeout 兜底：apt 在源异常或镜像变动时可能无限挂起，
+      # 而 runner 是临时环境，单步超时应当降级为警告而不是拖死整个 job。
+      - name: Initialization Environment · 释放磁盘
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # ── 释放 runner 预装但构建用不到的组件 ──
-          # Ubuntu runner 镜像预装 android(~10G)/ghc(~5G)/dotnet(~2.5G)/CodeQL(~5G)/
-          # boost(~1G)，合计约 23GB，构建完全用不到。不清理时可用空间仅约 30GB，
-          # 而 MTK-CPE 这类包集合较大的目标需要 20-25GB（dl 源码 3.8GB，其中单个
-          # go-mod-cache 就 1.9GB；build_dir+staging 15-20GB），会在 Download Packages
-          # 或 Compile Firmware 阶段把磁盘写满。
-          #
-          # 磁盘耗尽的表现极具误导性：job 被判 failure，但**没有任何步骤的
-          # conclusion 是 failure**，卡住的步骤停在 in_progress，GitHub 只给一条
-          # "The hosted runner lost communication with the server" 注解。
-          # 排查时若只看步骤状态会误判为网络问题。
-          echo "=== 清理前磁盘 ==="; df -h /
-          sudo rm -rf /usr/local/lib/android \
-                      /usr/share/dotnet \
-                      /opt/ghc \
-                      /opt/hostedtoolcache/CodeQL \
-                      /usr/local/share/boost \
-                      /usr/local/lib/node_modules \
-                      /opt/google/chrome 2>/dev/null || true
-          sudo apt-get -yqq purge firefox
-          sudo apt-get -yqq update
-          # 切勿在此执行 `apt-get full-upgrade`：
-          # runner 镜像从 ubuntu-24.04 迁到 26.04 后（见 actions/runner-images#14748，
-          # systemd 255 -> 259），full-upgrade 会尝试升级 systemd 等核心包；
-          # 容器化的 runner 无法重启这些服务，命令永久挂起（实测卡 84 分钟），
-          # 最终表现为 "The hosted runner lost communication with the server"，
-          # 且 job 被标记 failure 但没有任何步骤 conclusion=failure。
-          # runner 是临时环境，升级预装包没有任何收益，只保留依赖安装即可。
-          sudo apt-get -yqq autoremove --purge
-          sudo apt-get -yqq autoclean
-          sudo apt-get -yqq clean
+          # Ubuntu runner 镜像预装 android(~10G)/ghc(~5G)/dotnet(~2.5G)/
+          # CodeQL(~5G)/boost(~1G) 合计约 23GB，构建完全用不到。不清理时可用
+          # 空间仅约 30GB，而 MTK-CPE 这类目标需 20-25GB（dl 3.8GB 其中单个
+          # go-mod-cache 就 1.9GB；build_dir+staging 15-20GB），会在
+          # Download Packages / Compile Firmware 阶段把磁盘写满。
+          df -h /
+          timeout 300 sudo rm -rf /usr/local/lib/android \
+            /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/local/lib/node_modules \
+            /opt/google/chrome || echo "::warning::清理预装组件超时或被跳过"
+          echo "=== 清理后 ==="; df -h /
 
-          # 注意：上游 d350e8e 用本列表替代了 immortalwrt 官方 init_build_environment.sh，
-          # 但该列表明显不完整（低于官方脚本），缺失会导致编译在后期才失败。
-          # 以下包为对比官方脚本后补回，缺失会直接破坏构建：
+      - name: Initialization Environment · apt 索引
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # 不执行 full-upgrade：它会尝试升级 systemd 等核心包，容器化 runner
+          # 无法重启这些服务，命令永久挂起。
+          # 不执行 autoremove --purge：无 upgrade 的环境里同样可能长时间锁包。
+          # 不执行 purge firefox：Ubuntu 的 firefox 是 snap 包，purge 会触发
+          # snapd 操作，在 runner 容器里极易卡死，且清理它对构建毫无收益。
+          timeout 420 sudo apt-get -yqq update \
+            || echo "::warning::apt update 超时或失败，继续尝试安装依赖"
+          timeout 120 sudo apt-get -yqq clean || true
+          timeout 120 sudo apt-get -yqq autoclean || true
+
+      - name: Initialization Environment · 安装依赖
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # 注意：上游 d350e8e 用本列表替代了 immortalwrt 官方
+          # init_build_environment.sh，但该列表不完整（低于官方脚本），
+          # 缺失会导致编译在后期才失败。以下包为对比官方脚本后补回：
           #   squashfs-tools  -> 无 mksquashfs 则无法生成 .squashfs-sysupath 固件
           #   libfuse-dev     -> 旧命令曾单独安装；squashfs 相关构建需要
           #   haveged         -> 提供熵源，避免 CI 内 Go/Rust 编译因熵不足卡住
           #   autoconf/automake/binutils/fakeroot/libtool 等 -> 大量包 configure 依赖
           #   libz-dev/libglib2.0-dev/libreadline-dev 等 -> 常见构建期头文件
           #   p7zip/p7zip-full/lrzsz/sharutils/subversion/xxd -> 打包与脚本工具
-          sudo apt-get install -y --no-install-recommends \
+          timeout 1200 sudo apt-get install -y --no-install-recommends \
             bc bison build-essential bzip2 ca-certificates ccache clang \
             cmake cpio curl device-tree-compiler dos2unix file flex \
             g++-multilib gawk gcc-multilib genisoimage gettext git jq \
@@ -131,12 +137,15 @@ jobs:
             libgmp3-dev libmpc-dev libmpfr-dev libyaml-dev libc6-dev-i386 \
             p7zip p7zip-full lrzsz sharutils subversion m4 \
             python3-pip python3-ply python3-requests python3-docutils
+            || { echo "::error::构建依赖安装失败"; df -h /; exit 1; }
 
-          sudo timedatectl set-timezone "Asia/Shanghai"
-
+      - name: Initialization Environment · 时区与目录
+        run: |
+          sudo timedatectl set-timezone "Asia/Shanghai" \
+            || echo "::warning::设置时区失败（不影响构建）"
           sudo mkdir -p /mnt/build_wrt
           sudo chown $USER:$USER /mnt/build_wrt
-          sudo ln -s /mnt/build_wrt $GITHUB_WORKSPACE/wrt
+          sudo ln -sfn /mnt/build_wrt $GITHUB_WORKSPACE/wrt
 
       - name: Initialization Values
         id: initialize-values
