@@ -63,7 +63,7 @@ env:
 jobs:
   core:
     name: ${{inputs.WRT_SOURCE}}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
       cache_key: ${{steps.clone-code.outputs.cache_key}}
@@ -76,9 +76,34 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          # ── 释放 runner 预装但构建用不到的组件 ──
+          # Ubuntu runner 镜像预装 android(~10G)/ghc(~5G)/dotnet(~2.5G)/CodeQL(~5G)/
+          # boost(~1G)，合计约 23GB，构建完全用不到。不清理时可用空间仅约 30GB，
+          # 而 MTK-CPE 这类包集合较大的目标需要 20-25GB（dl 源码 3.8GB，其中单个
+          # go-mod-cache 就 1.9GB；build_dir+staging 15-20GB），会在 Download Packages
+          # 或 Compile Firmware 阶段把磁盘写满。
+          #
+          # 磁盘耗尽的表现极具误导性：job 被判 failure，但**没有任何步骤的
+          # conclusion 是 failure**，卡住的步骤停在 in_progress，GitHub 只给一条
+          # "The hosted runner lost communication with the server" 注解。
+          # 排查时若只看步骤状态会误判为网络问题。
+          echo "=== 清理前磁盘 ==="; df -h /
+          sudo rm -rf /usr/local/lib/android \
+                      /usr/share/dotnet \
+                      /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost \
+                      /usr/local/lib/node_modules \
+                      /opt/google/chrome 2>/dev/null || true
           sudo apt-get -yqq purge firefox
           sudo apt-get -yqq update
-          sudo apt-get -yqq full-upgrade
+          # 切勿在此执行 `apt-get full-upgrade`：
+          # runner 镜像从 ubuntu-24.04 迁到 26.04 后（见 actions/runner-images#14748，
+          # systemd 255 -> 259），full-upgrade 会尝试升级 systemd 等核心包；
+          # 容器化的 runner 无法重启这些服务，命令永久挂起（实测卡 84 分钟），
+          # 最终表现为 "The hosted runner lost communication with the server"，
+          # 且 job 被标记 failure 但没有任何步骤 conclusion=failure。
+          # runner 是临时环境，升级预装包没有任何收益，只保留依赖安装即可。
           sudo apt-get -yqq autoremove --purge
           sudo apt-get -yqq autoclean
           sudo apt-get -yqq clean
@@ -382,9 +407,11 @@ jobs:
       - name: Download Packages
         if: ${{ !inputs.WRT_TEST }}
         run: |
+          echo "=== 下载前磁盘 ==="; df -h /
           cd ./wrt/
 
-          make download -j$(nproc)
+          make download -j$(nproc) || { echo "make download 失败，磁盘状态："; df -h /; exit 1; }
+          echo "=== 下载后磁盘 ==="; df -h /
 
       - name: Compile Firmware
         if: ${{ !inputs.WRT_TEST }}
@@ -501,7 +528,7 @@ jobs:
     name: Roll cache generations
     needs: core
     if: ${{ !inputs.WRT_TEST && needs.core.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: wrt-cache-rollover-${{github.ref}}-${{needs.core.outputs.cache_prefix}}
       cancel-in-progress: false
