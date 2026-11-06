@@ -253,7 +253,17 @@ jobs:
             fi
           fi
 
-          ./scripts/feeds update -a
+          # 给 feeds 操作加超时与时间戳。feeds.conf.default 里有 7 个 feed 仓库
+          # （immortalwrt 的 packages/luci + openwrt 的 routing/telephony/video +
+          # pbs05 的两个 pon feed），合计约 600MB。GitHub runner 与 GitHub 同机房，
+          # 正常 2-5 分钟；但单个仓库响应慢时会无限等待 —— 实测该步骤曾卡 23 分钟
+          # 以上且没有任何超时保护，整条流水线就此挂住。
+          echo "=== feeds update -a 开始 $(date +%T) ==="
+          timeout 1800 ./scripts/feeds update -a || {
+            rc=$?
+            echo "::warning title=feeds update -a::退出码 $rc（124=1800s 超时），继续后续步骤"
+          }
+          echo "=== feeds update -a 结束 $(date +%T) ==="
 
           # 修正上游 QModem feed 的目录名 / PKG_NAME 不一致问题。
           # feeds 用【目录名】注册包，但 qmodem 主包的 DEPENDS 用【PKG_NAME】引用：
@@ -313,7 +323,7 @@ jobs:
           # 仍按旧目录名注册，依赖引用依旧落空。
           # update -i = Recreate the index only（不重新拉取仓库）
           if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then
-            ./scripts/feeds update -i
+            timeout 300 ./scripts/feeds update -i || echo "::warning::feeds update -i 超时"
           fi
 
           # 删除与 core 包同名的 ovpn-dco feed 副本。
@@ -329,17 +339,22 @@ jobs:
             FEEDS_INDEX_DIRTY=1
           fi
           if [ -n "$FEEDS_INDEX_DIRTY" ]; then
-            ./scripts/feeds update -i
+            timeout 300 ./scripts/feeds update -i || echo "::warning::ovpn-dco 后重建索引超时"
             echo "Feed index rebuilt after ovpn-dco removal."
           fi
 
           # -p qmodem: 同名包存在多个 feed 时优先用 qmodem 的版本
           # （官方文档推荐：feeds install -a -p qmodem）
+          echo "=== feeds install 开始 $(date +%T) ==="
           if [[ "${WRT_CONFIG^^}" == *"CPE"* ]]; then
-            ./scripts/feeds install -a -p qmodem
+            timeout 900 ./scripts/feeds install -a -p qmodem || {
+              echo "::error title=feeds install::CPE 分支失败"; exit 1; }
           else
-            ./scripts/feeds install -a
+            timeout 900 ./scripts/feeds install -a || {
+              echo "::error title=feeds install::失败"; exit 1; }
           fi
+          echo "=== feeds install 结束 $(date +%T) ==="
+          echo "已安装 feed 包数: $(ls -d package/feeds/*/*/ 2>/dev/null | wc -l)"
 
       - name: Custom Packages
         run: |
