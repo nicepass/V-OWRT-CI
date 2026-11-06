@@ -144,11 +144,44 @@ jobs:
           if [ -n "$MISSING" ]; then
             echo "::warning title=依赖包跳过::当前发行版无可用版本:$MISSING"
           fi
-          echo "将安装 $(echo $AVAIL | wc -w) 个包"
-          timeout 1500 sudo apt-get install -y --no-install-recommends $AVAIL \
-            || { echo "::error::构建依赖安装失败"; df -h /; exit 1; }
+          # ── 只装尚未安装的包 ──
+          # Ubuntu runner 镜像已预装 llvm/clang/lld/build-essential 等一大批工具。
+          # 对已安装的包再次 apt-get install 会触发 aptitude 检查与可能的升级下载，
+          # 在慢速 runner 上实测能把这一步从 1 分钟拖到 25 分钟以上。
+          # 用 dpkg -s 先筛掉已存在的，只把真正缺的交给 apt。
+          TO_INSTALL=""
+          ALREADY=0
+          for p in $AVAIL; do
+            if dpkg -s "$p" >/dev/null 2>&1; then
+              ALREADY=$((ALREADY+1))
+            else
+              TO_INSTALL="$TO_INSTALL $p"
+            fi
+          done
+          N=$(echo $TO_INSTALL | wc -w)
+          echo "包状态：已安装 $ALREADY 个，需要新装 $N 个"
+          echo "待装清单：$TO_INSTALL"
+          df -h /
 
-          # 关键工具必须到位，否则要等到编译后期才暴露（那时已经烧掉半小时）
+          # ── 不要在 apt 超时或非零退出时直接 exit 1 ──
+          # 实测同一份包列表在不同 runner 上耗时从 1-2 分钟到 27 分钟以上不等
+          # （llvm/clang/lld 合计 1-2GB，慢速 runner 上下载不完）。timeout 杀掉
+          # apt 时大部分包其实已经装好，直接判失败会让整条流水线白跑。
+          # 正确做法：超时/异常后修复 dpkg 状态，再由下面的关键工具校验决定成败。
+          # 同时放宽 timeout 到 2400s，并开启 apt 的并行下载与重试。
+          apt_opts="-y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Pipeline-Depth=10"
+          if [ "$N" -eq 0 ]; then
+            echo "所有依赖包均已预装，跳过 apt install"
+          elif ! timeout 2400 sudo apt-get install $apt_opts $TO_INSTALL; then
+            rc=$?
+            echo "::warning title=apt install 未正常结束::rc=$rc（124=2400s 超时），尝试修复 dpkg 状态后继续"
+            sudo dpkg --configure -a 2>/dev/null || true
+            sudo apt-get -yqq -f install 2>/dev/null || true
+            df -h /
+          fi
+
+          # 关键工具必须到位，否则要等到编译后期才暴露（那时已经烧掉半小时）。
+          # 这一步才是安装阶段真正的成败判据。
           MISSING_CRIT=""
           for c in mksquashfs gcc g++ make cmake ninja python3 rsync ccache \
                    bison flex patch perl unzip wget xz; do
@@ -156,9 +189,10 @@ jobs:
           done
           if [ -n "$MISSING_CRIT" ]; then
             echo "::error title=关键工具缺失::构建必需但未安装:$MISSING_CRIT"
+            df -h /
             exit 1
           fi
-          echo "关键工具校验通过"
+          echo "关键工具校验通过（apt 阶段耗时见上）"
 
       - name: Initialization Environment · 时区与目录
         run: |
