@@ -485,12 +485,36 @@ jobs:
 
       - name: Download Packages
         if: ${{ !inputs.WRT_TEST }}
+        # 步骤级硬超时（GitHub 原生）。这一层无论如何都要有：即使脚本内部
+        # 的 timeout 失效、或有子进程持有 stdout 让步骤永不结束，两小时后
+        # 也一定会被 runner 强制终止，不会一路挂到 job 的 360 分钟上限。
+        timeout-minutes: 150
         run: |
           echo "=== 下载前磁盘 ==="; df -h /
           cd ./wrt/
 
-          make download -j$(nproc) || { echo "make download 失败，磁盘状态："; df -h /; exit 1; }
+          # 这一步骤会编译 host tools + 交叉工具链，4 核 runner 上约 90-120
+          # 分钟，属于固有成本；内部 timeout 只用于真正卡死时兜底。
+          timeout -k 30 9000 make download -j$(nproc) || {
+            rc=$?
+            echo "::warning title=make download 未正常结束::退出码 $rc（124=超时，137/143=被强杀）"
+            df -h /
+          }
+
+          # ── 关键：清理残留的下载子进程 ──
+          # make download 会并行拉起大量 curl/wget。实测 OWRT-X86M #18：make 已
+          # 返回、脚本最后一行 df 也输出了，但步骤状态仍停在 in_progress 超过
+          # 100 分钟直到被人工取消 —— 残留子进程继承并持有 stdout，runner 认为
+          # 步骤尚未结束，日志流不关闭。
+          # 先给它们一个正常结束的机会，再强制清理，然后才真正结束步骤。
+          wait 2>/dev/null || true
+          pkill -f 'wget.*dl/' 2>/dev/null || true
+          pkill -f 'curl.*dl/' 2>/dev/null || true
+          sleep 3
+
           echo "=== 下载后磁盘 ==="; df -h /
+          echo "dl 目录文件数: $(ls dl 2>/dev/null | wc -l)"
+          echo "步骤即将结束（已清理残留下载子进程）"
 
       - name: Compile Firmware
         if: ${{ !inputs.WRT_TEST }}
