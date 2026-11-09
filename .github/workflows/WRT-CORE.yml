@@ -501,16 +501,17 @@ jobs:
             df -h /
           }
 
-          # ── 关键：清理残留的下载子进程 ──
-          # make download 会并行拉起大量 curl/wget。实测 OWRT-X86M #18：make 已
-          # 返回、脚本最后一行 df 也输出了，但步骤状态仍停在 in_progress 超过
-          # 100 分钟直到被人工取消 —— 残留子进程继承并持有 stdout，runner 认为
-          # 步骤尚未结束，日志流不关闭。
-          # 先给它们一个正常结束的机会，再强制清理，然后才真正结束步骤。
+          # ── 收尾：等子进程自己结束 ──
+          # 注意：绝不要在这里用 `pkill -f <含 curl|wget 的正则>`。
+          # 本地运行器用 `bash -c "<整个脚本>"` 执行本块，脚本全文都在该 bash 的
+          # /proc/PID/cmdline 里，而正则参数本身又含 "curl"/"wget" 字样 ——
+          # pkill -f 会匹配到正在执行它的 bash 并给自己发 SIGTERM，整个步骤以
+          # exit -15 结束。实测三个目标因此同时"失败"，而手动 make download
+          # 却完全正常。
+          # make 返回后残留子进程通常已随父进程退出；确有顽固残留时由上面的
+          # timeout -k 30 兜底（超时会连同进程组一起强杀），不需要 pkill。
           wait 2>/dev/null || true
-          pkill -f 'wget.*dl/' 2>/dev/null || true
-          pkill -f 'curl.*dl/' 2>/dev/null || true
-          sleep 3
+          sleep 2
 
           echo "=== 下载后磁盘 ==="; df -h /
           echo "dl 目录文件数: $(ls dl 2>/dev/null | wc -l)"
