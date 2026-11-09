@@ -281,9 +281,17 @@ if [ -n "$HONK_PKG_DIR" ] && [ -f "$HONK_PKG_DIR/build_honk_core.sh" ]; then
 		echo "honk: relaxed build_honk_core.sh arch match to accept aarch64_*"
 	fi
 
+	# 注意：上游 2026-11-08 起改了 asset 命名——arch 段从
+	#   honk-<ver>-aarch64_generic-aarch64_generic-openwrt-24.10.x.ipk
+	# 变成
+	#   honk_<ver>_aarch64_generic-openwrt-24.10.8.ipk
+	# 即重复的 arch 名塌缩成一个。用单名匹配可同时兼容新旧两种写法
+	# （jq contains 是子串匹配，旧名的 -arch-arch 也包含单个 arch）。
+	# 若写成 aarch64_generic-aarch64_generic 则新命名一个都匹配不上，
+	# url 变 <none>，退回 zig 现场编译，最终 Compile Firmware 失败。
 	case "${WRT_TARGET:-}" in
-		x86) HONK_ASSET_ARCH="x86_64-x86_64" ;;
-		*)   HONK_ASSET_ARCH="aarch64_generic-aarch64_generic" ;;
+		x86) HONK_ASSET_ARCH="x86_64" ;;
+		*)   HONK_ASSET_ARCH="aarch64_generic" ;;
 	esac
 
 	HONK_BIN="$HONK_PKG_DIR/files/honk-core.bin"
@@ -331,6 +339,11 @@ if [ -n "$HONK_PKG_DIR" ] && [ -f "$HONK_PKG_DIR/build_honk_core.sh" ]; then
 			fi
 		else
 			echo "WARNING: failed to fetch honk ipk (url='${HONK_URL:-<none>}'); build will fail at the zig check"
+			# 诊断增强：把上游实际提供的 asset 列出来，这样下次命名再变时
+			# 能直接从 CI 日志看出该改哪个匹配串，不必再翻 API。
+			echo "honk: 期望 arch='$HONK_ASSET_ARCH'，上游 release 实际提供："
+			printf '%s' "$HONK_JSON" \
+			  | jq -r '.assets[]?.name' 2>/dev/null | sed 's/^/  honk:   /' | head -20
 		fi
 		rm -rf "$HONK_TMP"
 	fi
