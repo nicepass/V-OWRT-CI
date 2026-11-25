@@ -1,9 +1,73 @@
 #设备平台
 CONFIG_TARGET_airoha=y
 CONFIG_TARGET_airoha_an7581=y
+
 #设备列表：仅 Nokia XG-040G-MD
 #两个变体共用 Device/nokia_xg-040g-md-common（DEVICE_PACKAGES 相同），
 #仅 DTS 不同：-ubi 用 an7581-nokia_xg-040g-md-ubi，-ubi-usb-sfp 多一组 USB/SFP 定义。
 #两者互为 SUPPORTED_DEVICES，刷机时按实际硬件是否接 USB/SFP 选其一。
 CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi=y
 CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi-usb-sfp=y
+
+#─────────────────────────────────────────────────────────────────────
+# PON 光猫栈：必须显式开启，否则编出来的固件没有 PON 驱动，刷上去上不了网。
+#
+# 原因：这些包支持三态（y/m/n），kconfig 未指定时默认取 m。
+#   =m  只编译成 .ipk，不装进 rootfs → manifest 里看不到
+#   =y  编进 rootfs → 刷机后可用
+# DEVICE_PACKAGES 里虽然引用了它们，但在 PER_DEVICE_ROOTFS + MULTI_PROFILE
+# 组合下不足以把它们从 m 提升为 y，实测 2026-11-25 首次编译产物
+# manifest 里 airoha-ponctl / airoha-pond / kmod-airoha-xpon 全部缺失，
+# 而 pbs05 官方 configs/an7581.config 用 CONFIG_MODULE_DEFAULT_*=y 解决。
+#
+# 下面两组配套使用：
+#   MODULE_DEFAULT  改默认值，覆盖所有未显式指定的引用方
+#   PACKAGE=y       对 PON 应用本身再显式钉死
+#─────────────────────────────────────────────────────────────────────
+
+#PON 模块默认值（官方 configs/an7581.config 的做法）
+CONFIG_MODULE_DEFAULT_airoha-ponctl=y
+CONFIG_MODULE_DEFAULT_kmod-airoha-xpon=y
+CONFIG_MODULE_DEFAULT_kmod-airoha-en7572=y
+CONFIG_MODULE_DEFAULT_kmod-airoha-paged-bosa=y
+CONFIG_MODULE_DEFAULT_kmod-phy-airoha-en8811h=y
+CONFIG_MODULE_DEFAULT_fitblk=y
+CONFIG_MODULE_DEFAULT_kmod-regulator-userspace-consumer=y
+CONFIG_MODULE_DEFAULT_kmod-usb-ledtrig-usbport=y
+CONFIG_MODULE_DEFAULT_airoha-en7581-npu-firmware=y
+CONFIG_MODULE_DEFAULT_kmod-gpio-button-hotplug=y
+CONFIG_MODULE_DEFAULT_kmod-leds-gpio=y
+CONFIG_MODULE_DEFAULT_kmod-usb3=y
+CONFIG_MODULE_DEFAULT_kmod-usb-storage=y
+CONFIG_MODULE_DEFAULT_kmod-usb-storage-uas=y
+CONFIG_MODULE_DEFAULT_kmod-fs-ext4=y
+CONFIG_MODULE_DEFAULT_kmod-fs-vfat=y
+CONFIG_MODULE_DEFAULT_kmod-fs-exfat=y
+CONFIG_MODULE_DEFAULT_kmod-nf-conntrack-bridge=y
+CONFIG_MODULE_DEFAULT_kmod-nft-offload=y
+CONFIG_MODULE_DEFAULT_nand-utils=y
+CONFIG_MODULE_DEFAULT_ubi-utils=y
+CONFIG_MODULE_DEFAULT_uboot-envtools=y
+CONFIG_MODULE_DEFAULT_i2c-tools=y
+CONFIG_MODULE_DEFAULT_autocore=y
+
+#PON 应用与驱动：显式钉死为 y
+CONFIG_PACKAGE_airoha-ponctl=y
+CONFIG_PACKAGE_airoha-pond=y
+CONFIG_PACKAGE_kmod-airoha-xpon=y
+CONFIG_PACKAGE_kmod-airoha-pon-frontend=y
+CONFIG_PACKAGE_airoha-pon-debug=y
+CONFIG_PACKAGE_luci-app-pon=y
+CONFIG_PACKAGE_luci-i18n-pon-zh-cn=y
+CONFIG_PACKAGE_kmod-airoha-en7572=y
+CONFIG_PACKAGE_kmod-phy-airoha-en8811h=y
+CONFIG_PACKAGE_fitblk=y
+CONFIG_PACKAGE_kmod-regulator-userspace-consumer=y
+CONFIG_PACKAGE_kmod-usb-ledtrig-usbport=y
+
+#─────────────────────────────────────────────────────────────────────
+# 明确不选的：本目标只有 XG-040G-MD 一台光猫，无 WiFi 需求
+#   kmod-mt7915e / kmod-mt7916-firmware / rtl826x-firmware
+#   znxt-zn515-mt7916-eeprom / kmod-phy-maxlinear / kmod-phy-realtek / wpad-openssl
+# 官方 config 里这些是 =y，本目标刻意省略。若后续要 WiFi 再加回。
+#─────────────────────────────────────────────────────────────────────
