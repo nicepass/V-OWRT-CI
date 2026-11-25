@@ -35,7 +35,11 @@ jobs:
       fail-fast: false
       #max-parallel: 3
       matrix:
-        CONFIG: [AIROHA-AN7581, AIROHA-AN7583]
+        # 只保留 AN7581：手上仅有 Nokia XG-040G-MD 一台设备。
+        # AN7583 的 Config 文件保留在 Config/AIROHA-AN7583.txt 备用，
+        # 需要时把 AIROHA-AN7583 加回本列表即可（注意 an7583 无 KERNEL_SIZE 之外的
+        # 平台差异，其 image/an7583.mk 仅 5 个设备）。
+        CONFIG: [AIROHA-AN7581]
         SOURCE: [pbs05/ponwrt]
         BRANCH: [master]
 

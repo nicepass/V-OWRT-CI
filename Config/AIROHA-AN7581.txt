@@ -1,5 +1,9 @@
 #设备平台
 CONFIG_TARGET_airoha=y
 CONFIG_TARGET_airoha_an7581=y
-#设备列表
-CONFIG_TARGET_ALL_PROFILES=y
+#设备列表：仅 Nokia XG-040G-MD
+#两个变体共用 Device/nokia_xg-040g-md-common（DEVICE_PACKAGES 相同），
+#仅 DTS 不同：-ubi 用 an7581-nokia_xg-040g-md-ubi，-ubi-usb-sfp 多一组 USB/SFP 定义。
+#两者互为 SUPPORTED_DEVICES，刷机时按实际硬件是否接 USB/SFP 选其一。
+CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi=y
+CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi-usb-sfp=y
