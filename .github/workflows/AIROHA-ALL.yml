@@ -67,6 +67,23 @@ jobs:
       #源码名称
       WRT_SOURCE: ${{matrix.SOURCE}}
       #插件调整
-      WRT_PACKAGE: ${{inputs.PACKAGE}}
+      #本目标为 PON 光猫，目标 CPU 无硬件 AES 指令。momo / nikki（mihomo 系）
+      #与 honk（eBPF 代理）都用 AEAD 加密，无 AES 加速时退化为纯软件实现，
+      #性能不可接受且无实用价值，故只保留 homeproxy（sing-box）。
+      #mini-diskmanager 按需求一并移除。
+      #
+      #为何走 WRT_PACKAGE 而不是写进 Config/AIROHA-AN7581.txt：
+      #这些包在 GENERAL.txt 里是 =y，而 WRT-CORE.yml 用
+      #  cat 目标Config GENERAL.txt >> .config
+      #追加，同一符号后追加者胜 —— 写进目标 Config 会被 GENERAL.txt 覆盖，
+      #并且会触发 Config 覆盖冲突检测直接 fail。
+      #WRT_PACKAGE 由 Scripts/Settings.sh 在 cat 之后 echo 进 .config，
+      #优先级最高且不参与冲突检测，是唯一正确的按目标裁剪通道。
+      WRT_PACKAGE: |
+        CONFIG_PACKAGE_luci-app-momo=n
+        CONFIG_PACKAGE_luci-app-nikki=n
+        CONFIG_PACKAGE_luci-app-honk=n
+        CONFIG_PACKAGE_luci-app-mini-diskmanager=n
+        ${{ inputs.PACKAGE }}
       #仅输出配置文件
       WRT_TEST: ${{inputs.TEST || false}}

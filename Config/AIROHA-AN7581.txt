@@ -64,6 +64,8 @@ CONFIG_PACKAGE_kmod-phy-airoha-en8811h=y
 CONFIG_PACKAGE_fitblk=y
 CONFIG_PACKAGE_kmod-regulator-userspace-consumer=y
 CONFIG_PACKAGE_kmod-usb-ledtrig-usbport=y
+#I2C 调试工具（i2cdetect/i2cget 读光模块 EEPROM）。官方 config 是显式 =y。
+CONFIG_PACKAGE_i2c-tools=y
 
 #─────────────────────────────────────────────────────────────────────
 # 明确不选的：本目标只有 XG-040G-MD 一台光猫，无 WiFi 需求
